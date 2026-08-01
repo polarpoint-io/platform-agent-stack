@@ -1,37 +1,33 @@
 # itsm-providers
 
-Pluggable ITSM MCP backends. Freshservice today, swappable without touching the swarm or the risk policy.
+Pluggable ITSM MCP backends. Freshservice today, swappable without
+touching the swarm or the risk policy.
 
-> **Status: scaffold.** The name, the boundary and the open items below
-> are settled; the implementation is not written yet. Nothing here is
-> wired into a running stack.
+## Layout
 
-## What will live here
+```
+providers/        <name>.mcp.json — the MCP server definition
+action-mappings/  <name>.yaml — generic policy verbs to real tool names
+```
 
-- `<provider>.mcp.json` per backend — the MCP server definition
-- `action-mappings/<provider>.yaml` — generic policy verbs mapped to that
-  server's real tool names
+`setup.sh` reads both, selected by `ITSM_PROVIDER`.
 
 ## Open items — resolve before this is used in anger
 
-- **ServiceNow and Jira Service Management files are unverified
-  templates, not real config.** Several community MCP servers exist for
-  each, with different install commands. Treat them as a starting shape.
+- **ServiceNow and Jira Service Management are unverified templates, not
+  real config.** Several community MCP servers exist for each, with
+  different install commands. Treat them as a starting shape.
 - **Action mappings must not be guessed.** The generic verbs in
-  [agent-risk-policy](../agent-risk-policy) need mapping to whatever tool
-  names your MCP server actually exposes. Connect first, read the live
-  tool list, then write the mapping. A wrong mapping doesn't fail loudly
-  — it silently ungates an action.
-- **Layout is unsettled.** `platform-agent-stack/setup.sh` currently
-  accepts the provider file at either `providers/<name>.mcp.json` or
-  `<name>.mcp.json` and reports both on failure. Pick one and drop the
-  other once this repo has real contents.
+  [`../policy/risk-tiers.yaml`](../policy/risk-tiers.yaml) need mapping to
+  whatever tool names your MCP server actually exposes. Connect first,
+  read the live tool list, then write the mapping. A wrong mapping doesn't
+  fail loudly — it silently ungates an action.
 
-## How this fits
+`setup.sh` catches part of that for you: it fails on a missing mapping,
+and warns on any mapped verb that appears in no tier. It cannot tell you
+that a verb is mapped to the *wrong* tool — only you can.
 
-Consumed by [agent-swarm-topology](../agent-swarm-topology)
-(`itsm-support.actionMapping`) and wired by
-[platform-agent-stack](../platform-agent-stack).
+## Related
 
-See `platform-agent-stack` for the architecture diagram, the full repo
-map, and how these components are composed.
+- [`../policy`](../policy) — the tiers these verbs are gated by
+- [`../swarm`](../swarm) — resolves `action-mappings/${ITSM_PROVIDER}.yaml`

@@ -1,27 +1,35 @@
-# agent-swarm-topology
+# swarm
 
 The orchestration definition: which agents exist, what each wraps or
-owns, and how they're wired. This is the one repo that references every
-other component — everything else is a leaf.
+owns, and how they're wired.
 
 ## What's here
 
 - `swarm.config.json` — hierarchical topology:
   - `triage-router` — classifies incoming requests, routes them
   - `sre-investigator` — wraps existing HolmesGPT, read-only, untouched
-  - `itsm-support` — new; ITSM backend and risk policy resolved from
-    sibling repos at deploy time, not hardcoded here
+  - `itsm-support` — ITSM backend and risk policy resolved by relative
+    path within this repo
 
-## Why the paths look like `$ITSM_PROVIDERS_REPO/...`
+`maxAgents` is 4 against 3 defined agents — deliberate headroom for a
+fourth specialist. `setup.sh` reads the value from here rather than
+hardcoding it, so the two cannot drift.
 
-This repo doesn't hardcode where `itsm-providers` or `agent-risk-policy`
-live on disk — those are sibling repos, cloned separately, potentially at
-different paths on different machines. `platform-agent-stack` is what
-resolves those env vars before this config gets used; this repo alone is
-not deployable without it.
+## Paths
 
-## Depends on
+`actionPolicy` and `actionMapping` are relative to this directory:
 
-[itsm-providers](../itsm-providers), [agent-risk-policy](../agent-risk-policy),
-[confluence-toolset](../confluence-toolset) — all three referenced by
-name/env-var, none of them vendored in.
+```
+actionPolicy   ../policy/risk-tiers.yaml
+actionMapping  ../itsm-providers/action-mappings/${ITSM_PROVIDER}.yaml
+```
+
+An earlier cut of this repo kept those as sibling repos behind
+`$RISK_POLICY_REPO` and `$ITSM_PROVIDERS_REPO`. That indirection is gone
+— see the root README for why.
+
+## Related
+
+- [`../policy`](../policy) — the tiers these agents are gated by
+- [`../itsm-providers`](../itsm-providers) — backends and action mappings
+- [`https://github.com/polarpoint-io/ruflo-bridge`](https://github.com/polarpoint-io/ruflo-bridge) — the runtime this runs on

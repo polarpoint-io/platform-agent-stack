@@ -1,28 +1,21 @@
 # confluence-toolset
 
-Read-only Confluence access over REST, for environments where the Confluence MCP isn't available or wanted.
-
-> **Status: scaffold.** The name, the boundary and the open items below
-> are settled; the implementation is not written yet. Nothing here is
-> wired into a running stack.
+Read-only Confluence access over REST, for environments where the
+Confluence MCP isn't available or wanted. Reuses the service-account
+approach from the existing docs-as-code publish pipeline.
 
 ## What will live here
 
 - REST client for Confluence page and search reads
-- Service-account credential handling, reusing the existing
-  docs-as-code publish pipeline's approach
+- Service-account credential handling
 - No write path — by design
 
-## Open items — resolve before this is used in anger
+## Open items
 
-- **Read-only is a design constraint, not a default.** If a write path
-  is ever added it needs tiering in
-  [agent-risk-policy](../agent-risk-policy) first.
+- **Read-only is a design constraint, not a default.** If a write path is
+  ever added it needs tiering in
+  [`../policy/risk-tiers.yaml`](../policy/risk-tiers.yaml) first.
 
-## How this fits
+## Related
 
-Consumed by [agent-swarm-topology](../agent-swarm-topology)
-(`itsm-support.toolsets: confluence-read`).
-
-See `platform-agent-stack` for the architecture diagram, the full repo
-map, and how these components are composed.
+- [`../swarm`](../swarm) — `itsm-support.toolsets: confluence-read`

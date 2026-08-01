@@ -1,10 +1,8 @@
-# agent-risk-policy
+# policy
 
-Risk-tiered action gating — what an agent can do unattended vs. what
-needs a human. Written in generic verbs, deliberately not tied to any
-one tool's actual API, and deliberately its own repo: this is the kind
-of thing worth reusing across every agent you build, not just this one,
-and a policy change shouldn't require a code review of the swarm itself.
+Risk-tiered action gating — what an agent may do unattended versus what
+needs a human. Written in generic verbs, deliberately not tied to any one
+tool's API.
 
 ## What's here
 
@@ -20,15 +18,19 @@ server's tool list is not — upgrade a provider and you can acquire new
 verbs without this file changing. Anything unrecognised gets drafted for
 a human rather than run.
 
-## Consumed by
+## Kept next to the mappings on purpose
 
-[agent-swarm-topology](../agent-swarm-topology), via
-`itsm-support.actionPolicy`. The actual verb names here need to match
-whatever `action-mappings/` in [itsm-providers](../itsm-providers) maps
-them to for your chosen tool.
+This policy names generic verbs;
+[`../itsm-providers/action-mappings/`](../itsm-providers/action-mappings)
+binds them to a backend's real tool names. If the two disagree, an action
+reaches the backend ungated — and it fails silently, which is the worst
+way for a safety control to fail.
+
+While these lived in separate repos that could not be one commit, one
+review, or one check. Now `setup.sh` refuses to proceed on a missing
+mapping and warns on any mapped verb that appears in no tier.
 
 ## Changing this
 
-This is the file to touch when the *policy* changes (e.g. "access grants
-always need approval") — not when the *tool* changes. Tool swaps live in
-`itsm-providers`, not here.
+Touch this file when the *policy* changes ("access grants always need
+approval"). Tool swaps live in [`../itsm-providers`](../itsm-providers).
