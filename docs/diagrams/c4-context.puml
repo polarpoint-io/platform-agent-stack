@@ -1,7 +1,6 @@
 @startuml c4-context
 ' C4 level 1 — system context.
-' C4-PlantUML is vendored under c4-plantuml/ so rendering needs no network.
-!include c4-plantuml/C4_Context.puml
+!include <C4/C4_Context>
 
 title System context — SRE + ITSM agent platform
 
@@ -12,7 +11,7 @@ Person(engineer, "Engineer / on-call", "Raises incidents, asks questions, approv
 System(platform, "SRE + ITSM agent platform", "Ruflo-orchestrated agent swarm. Triages a request, investigates infrastructure read-only, or handles an ITSM ticket. Every write is gated by a shared risk tier.")
 
 System_Ext(obs, "Observability", "Kubernetes, Prometheus, Thanos, Grafana, Azure MCP — all read-only")
-System_Ext(itsm, "ITSM backend", "Freshservice today; ServiceNow / Jira SM swappable without touching the swarm")
+System_Ext(itsm, "ITSM backend", "Jira Service Management today; Jira Service Management / ServiceNow swappable without touching the swarm")
 System_Ext(confluence, "Confluence", "Knowledge base, read-only over REST")
 System_Ext(runbooks, "Runbook MCP", "holmesgpt-runbook-mcp — search, RCA, and draft PRs")
 System_Ext(llm, "LLM inference", "Azure AI Foundry now; Modelplane self-host later, alongside")

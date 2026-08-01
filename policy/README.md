@@ -27,9 +27,9 @@ reaches the backend ungated — and it fails silently, which is the worst
 way for a safety control to fail.
 
 Keeping them together means a policy change and the mapping change it
-depends on are one commit and one review. `setup.sh` refuses to proceed
-on a missing mapping and warns on any mapped verb that appears in no
-tier.
+depends on are one commit and one review. The chart refuses to render on
+a missing mapping, and `scripts/validate-config.sh` warns in CI on any
+mapped verb that appears in no tier.
 
 ## Changing this
 

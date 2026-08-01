@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "platform-agent-stack.fullname" . }}
+  labels: {{- include "platform-agent-stack.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels: {{- include "platform-agent-stack.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "platform-agent-stack.labels" . | nindent 8 }}
+      annotations:
+        # Roll the pods when any config changes, otherwise a policy edit
+        # sits in the ConfigMap while the running agents use the old one.
+        checksum/config: {{ (.Files.Glob "{swarm,policy,itsm-providers,llm-providers,mcp}/**").AsConfig | sha256sum }}
+    spec:
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: swarm
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["swarm", "start", "--config", "/config/swarm.config.json"]
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          env:
+            - name: RUFLO_BRIDGE_URL
+              value: "http://{{ .Values.bridge.serviceName }}:{{ .Values.bridge.port }}"
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.state.connectionSecret }}
+                  key: MONGO_URI
+                  optional: true   # absent until the Composition assembles it
+          envFrom:
+            {{- range $name, $cfg := .Values.externalSecrets.keys }}
+            - secretRef:
+                name: {{ include "platform-agent-stack.fullname" $ }}-{{ $name }}
+            {{- end }}
+          volumeMounts:
+            - { name: config, mountPath: /config, readOnly: true }
+            - { name: mcp,    mountPath: /app/.mcp.json, subPath: .mcp.json, readOnly: true }
+            - { name: tmp,    mountPath: /tmp }
+      volumes:
+        - name: config
+          configMap: { name: {{ include "platform-agent-stack.fullname" . }}-config }
+        - name: mcp
+          configMap: { name: {{ include "platform-agent-stack.fullname" . }}-mcp }
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}

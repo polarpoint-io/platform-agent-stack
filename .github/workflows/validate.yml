@@ -1,0 +1,35 @@
+name: validate
+
+# ArgoCD syncs whatever is on main. A bad policy/mapping pair here means
+# an action reaches the ITSM backend under the wrong tier — and it fails
+# silently, so nothing downstream will tell you. Catch it at PR time.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install pyyaml
+      - name: Validate policy, mappings and swarm config
+        run: ./scripts/validate-config.sh
+
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint .
+      - name: Render with the values ArgoCD will use
+        run: helm template pas . --values values.yaml
+      - name: Guards must still refuse bad input
+        run: |
+          set -e
+          ! helm template pas . --set image.tag=3.16.2   2>/dev/null || { echo "::error::CVE floor guard did not fire"; exit 1; }
+          ! helm template pas . --set image.tag=latest    2>/dev/null || { echo "::error::semver guard did not fire"; exit 1; }
+          ! helm template pas . --set itsmProvider=nope   2>/dev/null || { echo "::error::provider guard did not fire"; exit 1; }
+          echo "all guards fired"

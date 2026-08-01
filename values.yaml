@@ -1,0 +1,66 @@
+# Which ITSM backend to wire in. Must match a file under
+# itsm-providers/providers/ AND one under itsm-providers/action-mappings/.
+# The chart fails to render if either is missing.
+itsmProvider: jira-service-management
+
+image:
+  repository: ghcr.io/ruvnet/ruflo
+  # Same floor as ruflo-bridge — below 3.16.3 the MCP bridge is
+  # unauthenticated (CVE-2026-59726). Asserted at render time.
+  tag: "3.30.2"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+# The bridge Service this swarm talks to. Deployed by the ruflo-bridge
+# chart, which ArgoCD syncs as a separate Application.
+bridge:
+  serviceName: ruflo-bridge
+  port: 3000
+
+# External Secrets Operator. Nothing secret is committed to this repo;
+# the chart only names where to find it.
+externalSecrets:
+  enabled: true
+  # TODO(verify): SecretStore name and backing paths are placeholders.
+  # Set these to your actual ClusterSecretStore before syncing.
+  secretStoreRef:
+    name: polarpoint-secret-store
+    kind: ClusterSecretStore
+  refreshInterval: 1h
+  keys:
+    # Atlassian's hosted MCP server authenticates per-user over OAuth, so
+    # there is no API token to inject. These are only needed if you swap
+    # to self-hosted mcp-atlassian, which does take a token.
+    itsm:
+      remoteKey: platform-agent-stack/itsm
+      properties: [JIRA_URL, JIRA_USERNAME, JIRA_API_TOKEN]
+    llm:
+      remoteKey: platform-agent-stack/llm
+      properties: [AZURE_FOUNDRY_ENDPOINT, AZURE_FOUNDRY_API_KEY, AZURE_FOUNDRY_DEPLOYMENT, AZURE_FOUNDRY_DEPLOYMENT_FAST]
+    confluence:
+      remoteKey: platform-agent-stack/confluence
+      properties: [CONFLUENCE_BASE_URL, CONFLUENCE_USER, CONFLUENCE_API_TOKEN]
+
+# Mongo-compatible state, provisioned by mongostate-crossplane. The claim
+# writes a Secret with this name into the release namespace.
+state:
+  connectionSecret: agent-swarm-state
+
+resources:
+  requests: { cpu: 250m, memory: 512Mi }
+  limits:   { cpu: "2",  memory: 2Gi }
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  seccompProfile: { type: RuntimeDefault }
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: ["ALL"] }
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "kubernetes": { "command": "npx", "args": ["-y", "kubernetes-mcp-server@latest"], "env": { "READ_ONLY": "true" } },
+    "prometheus": { "command": "npx", "args": ["-y", "prometheus-mcp-server@latest"], "env": { "PROMETHEUS_URL": "${PROMETHEUS_URL}" } }
+  },
+  "_note": "Base config. platform-agent-stack/setup.sh merges the chosen ITSM provider in as mcpServers.itsm — it does not edit this file in place, it backs it up first. Server names and args above are the general shape; verify against the packages you actually install."
+}

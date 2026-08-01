@@ -12,7 +12,7 @@ owns, and how they're wired.
     path within this repo
 
 `maxAgents` is 4 against 3 defined agents — deliberate headroom for a
-fourth specialist. `setup.sh` reads the value from here rather than
+fourth specialist. The chart reads the value from here rather than
 hardcoding it, so the two cannot drift.
 
 ## Paths

@@ -1,27 +1,55 @@
 name: diagrams
 
-# The rendered SVGs are committed, so they can drift from their .puml
-# source. This re-renders and fails if the result differs from what's in
-# the tree — a diagram that lies is worse than no diagram.
+# Renders docs/diagrams/*.puml to PNG and commits the result, so changing
+# a diagram needs nothing installed locally.
+#
+# Mirrors the PlantUML step in markdown-pol-docs (same plantuml/plantuml
+# container, same @startuml-name convention). If that repo ever exposes
+# this as a reusable workflow, replace the job below with a `uses:` call
+# rather than maintaining a second copy.
+
 on:
-  pull_request:
-    paths: ['docs/diagrams/**']
   push:
-    branches: [main]
-    paths: ['docs/diagrams/**']
+    paths: ['docs/diagrams/**.puml']
+  pull_request:
+    paths: ['docs/diagrams/**.puml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  check-rendered:
+  render:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: '17' }
-      - run: sudo apt-get update && sudo apt-get install -y graphviz
-      - run: ./docs/diagrams/render.sh
-      - name: Fail if committed SVGs are stale
+        with:
+          # The branch, not the detached merge commit — we push back to it.
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - name: Render PlantUML to PNG
         run: |
-          if ! git diff --exit-code -- 'docs/diagrams/*.svg'; then
-            echo "::error::Committed SVGs do not match their .puml source. Run ./docs/diagrams/render.sh and commit the result."
-            exit 1
+          mkdir -p images/external
+          for puml_file in docs/diagrams/*.puml; do
+            [ -f "$puml_file" ] || continue
+            diagram_name=$(grep -m1 "^@startuml" "$puml_file" | sed 's/@startuml[[:space:]]*//; s/[[:space:]]*$//')
+            [ -n "$diagram_name" ] || diagram_name=$(basename "$puml_file" .puml)
+            docker run --rm -v "$(pwd):/work" -w /work plantuml/plantuml:latest \
+              -o /work/images/external -tpng "$puml_file"
+            original_name=$(basename "$puml_file" .puml)
+            if [ "$diagram_name" != "$original_name" ] && [ -f "images/external/${original_name}.png" ]; then
+              mv "images/external/${original_name}.png" "images/external/${diagram_name}.png"
+            fi
+          done
+
+      - name: Commit rendered images
+        run: |
+          if git diff --quiet -- images/external; then
+            echo "diagrams already up to date"
+            exit 0
           fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add images/external
+          git commit -m "Render C4 diagrams [skip ci]"
+          git push

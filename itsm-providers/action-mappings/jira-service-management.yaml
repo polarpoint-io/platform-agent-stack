@@ -1,0 +1,60 @@
+# Generic policy verb  ->  the tool name this MCP server actually exposes.
+#
+# READ THIS BEFORE EDITING
+# The left column must match a verb in ../../policy/risk-tiers.yaml. A verb
+# here that appears in no tier falls to default_policy.unlisted_action
+# (tier_4_draft_only); scripts/validate-config.sh warns when that happens.
+#
+# The failure this file causes is silent: map a verb to the wrong tool and
+# the agent performs an action under the wrong tier's gating. Nothing errors.
+
+provider: jira-service-management
+
+# Tool names below are the Atlassian Remote MCP Server's, as exposed by a
+# live connection. They are not guesses — but they are also not a promise
+# about YOUR instance. Confirm with tools/list before trusting them, and
+# re-check after Atlassian ships changes.
+
+actions:
+  # tier 1 — read-only
+  search_tickets:       searchJiraIssuesUsingJql
+  get_ticket:           getJiraIssue
+  # JSM knowledge base articles live in Confluence, not Jira.
+  list_kb_articles:     searchConfluenceUsingCql
+  get_confluence_page:  getConfluencePage
+  search_confluence:    searchConfluenceUsingCql
+
+  # tier 2 — low-risk write, executes and notifies
+  add_ticket_comment:   addCommentToJiraIssue
+
+  # tier 3 — needs human approval before executing
+  create_ticket:        createJiraIssue
+
+  # ---------------------------------------------------------------------
+  # NOT MAPPED, deliberately. Read before adding them.
+  #
+  # update_ticket_status (tier 2) and close_ticket (tier 3) are BOTH
+  # transitionJiraIssue. Jira models "move to In Progress" and "close" as
+  # the same operation with a different transition id, so a verb-to-tool
+  # mapping cannot tell them apart. Mapping update_ticket_status here
+  # would let a tier-2 auto-execute perform a tier-3 close.
+  #
+  # Fixing this properly needs the tier decision to consider the
+  # transition id, not just the tool name — which risk-tiers.yaml has no
+  # way to express today. Until it does, both stay unmapped and a human
+  # does transitions.
+  #
+  # update_ticket_status: transitionJiraIssue
+  # close_ticket:         transitionJiraIssue
+  #
+  # assign_ticket (tier 3) is editJiraIssue — the same general-purpose
+  # field editor that can rewrite summary, description, priority or any
+  # custom field. Mapping a single tier-3 verb to it grants far more than
+  # "assign". Left unmapped for the same reason.
+  #
+  # assign_ticket: editJiraIssue
+  # ---------------------------------------------------------------------
+
+  # tier 4 — agent drafts, human performs. Deliberately unmapped: an
+  # unmapped verb cannot execute at all.
+  # grant_access / revoke_access / modify_identity have no entry by design.

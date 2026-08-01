@@ -1,0 +1,36 @@
+# Copy to argocd-tooling-applications/releases/apps/platform/platform-agent-stack/non-prod.yaml
+#
+# Schema matches releases/templates/children-applications.yaml: when
+# chart.path is set the source is treated as a git repo at that path.
+# This repo IS the chart — Chart.yaml sits at the root so .Files.Get can
+# read swarm/, policy/ and itsm-providers/.
+chart:
+  name: platform-agent-stack
+  url: git@github.com:polarpoint-io/platform-agent-stack.git
+  path: .
+  targetRevision: main
+  namespace: agents
+
+labels:
+  service: tooling
+  app: platform-agent-stack
+
+values: |
+  itsmProvider: jira-service-management
+
+  image:
+    tag: "3.30.2"
+
+  bridge:
+    serviceName: ruflo-bridge
+    port: 3000
+
+  externalSecrets:
+    enabled: true
+    secretStoreRef:
+      # TODO(verify): point at your actual ClusterSecretStore.
+      name: polarpoint-secret-store
+      kind: ClusterSecretStore
+
+  state:
+    connectionSecret: agent-swarm-state

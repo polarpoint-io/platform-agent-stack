@@ -1,0 +1,8 @@
+{
+  "itsm": {
+    "url": "https://mcp.atlassian.com/v1/sse",
+    "transport": "sse",
+    "_note": "Atlassian's hosted Remote MCP Server. It authenticates per-user over OAuth rather than taking an API token in the environment, so there is no env block here — the bridge completes the OAuth flow on first connect.",
+    "_todo_verify": "Confirm the endpoint and transport against Atlassian's current docs, and confirm your Ruflo version supports a remote SSE MCP server (older releases only spawn stdio servers via command/args). If you self-host mcp-atlassian instead, this becomes a command/args block with JIRA_URL, JIRA_USERNAME and JIRA_API_TOKEN in env."
+  }
+}

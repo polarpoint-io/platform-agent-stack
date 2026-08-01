@@ -1,31 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Renders every .puml here to SVG. Run after editing a diagram — the SVGs
-# are committed because GitHub cannot render PlantUML in markdown.
+# Renders docs/diagrams/*.puml to PNG in images/external/.
 #
-#   ./render.sh
+# Same mechanism CI uses — the plantuml/plantuml container, so nothing
+# needs installing beyond docker. Matching how markdown-pol-docs does it.
 #
-# Needs java and graphviz. plantuml.jar is downloaded on first run to
-# .cache/ (git-ignored); set PLANTUML_JAR to use your own copy.
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLANTUML_VERSION="${PLANTUML_VERSION:-1.2026.6}"
-JAR="${PLANTUML_JAR:-$HERE/.cache/plantuml-${PLANTUML_VERSION}.jar}"
+#   ./docs/diagrams/render.sh
+#
+# The output filename comes from the name on the @startuml line, falling
+# back to the source filename.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$REPO_ROOT"
 
-command -v java >/dev/null || { echo "ERROR: java not found" >&2; exit 1; }
-command -v dot  >/dev/null || { echo "ERROR: graphviz (dot) not found" >&2; exit 1; }
+command -v docker >/dev/null || { echo "ERROR: docker not found" >&2; exit 1; }
+mkdir -p images/external
 
-if [ ! -f "$JAR" ]; then
-  mkdir -p "$(dirname "$JAR")"
-  echo "fetching plantuml ${PLANTUML_VERSION}"
-  curl -sSL -o "$JAR" \
-    "https://github.com/plantuml/plantuml/releases/download/v${PLANTUML_VERSION}/plantuml-${PLANTUML_VERSION}.jar"
-fi
+shopt -s nullglob
+for puml_file in docs/diagrams/*.puml; do
+  diagram_name="$(grep -m1 '^@startuml' "$puml_file" | sed 's/@startuml[[:space:]]*//; s/[[:space:]]*$//')"
+  [ -n "$diagram_name" ] || diagram_name="$(basename "$puml_file" .puml)"
 
-# C4-PlantUML is vendored in c4-plantuml/ so rendering works offline and
-# a change to the upstream library can't silently redraw your diagrams.
-cd "$HERE"
-for f in *.puml; do
-  java -jar "$JAR" -tsvg -nbthread auto "$f"
-  echo "  $f -> ${f%.puml}.svg"
+  docker run --rm -v "$(pwd):/work" -w /work plantuml/plantuml:latest \
+    -o /work/images/external -tpng "$puml_file"
+
+  original_name="$(basename "$puml_file" .puml)"
+  if [ "$diagram_name" != "$original_name" ] && [ -f "images/external/${original_name}.png" ]; then
+    mv "images/external/${original_name}.png" "images/external/${diagram_name}.png"
+  fi
+  echo "  $puml_file -> images/external/${diagram_name}.png"
 done
 echo "done"

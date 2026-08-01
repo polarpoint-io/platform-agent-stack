@@ -1,0 +1,14 @@
+# The merged MCP config: the bridge's base servers plus the selected ITSM
+# provider. Merged at render time so what git holds is what the cluster
+# runs. The ruflo-bridge chart mounts this ConfigMap by name.
+{{- $base := .Files.Get "mcp/base.mcp.json" | fromJson }}
+{{- $provider := .Files.Get (printf "itsm-providers/providers/%s.mcp.json" .Values.itsmProvider) | fromJson }}
+{{- $merged := dict "mcpServers" (merge (dict) (default (dict) $base.mcpServers) (dict "itsm" $provider.itsm)) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "platform-agent-stack.fullname" . }}-mcp
+  labels: {{- include "platform-agent-stack.labels" . | nindent 4 }}
+data:
+  .mcp.json: |
+{{ $merged | toPrettyJson | indent 4 }}

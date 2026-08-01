@@ -1,0 +1,19 @@
+{{- include "platform-agent-stack.assertVersion" . }}
+{{- include "platform-agent-stack.assertProvider" . }}
+# The swarm topology and the risk policy, straight from the files in this
+# repo. Nothing is assembled on anyone's laptop — what git holds is what
+# the cluster runs, which is the point of putting this under ArgoCD.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "platform-agent-stack.fullname" . }}-config
+  labels: {{- include "platform-agent-stack.labels" . | nindent 4 }}
+data:
+  swarm.config.json: |
+{{ .Files.Get "swarm/swarm.config.json" | indent 4 }}
+  risk-tiers.yaml: |
+{{ .Files.Get "policy/risk-tiers.yaml" | indent 4 }}
+  action-mappings.yaml: |
+{{ .Files.Get (printf "itsm-providers/action-mappings/%s.yaml" .Values.itsmProvider) | indent 4 }}
+  llm-provider.yaml: |
+{{ .Files.Get "llm-providers/foundry.yaml" | indent 4 }}

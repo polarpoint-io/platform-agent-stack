@@ -1,0 +1,9 @@
+# Docs and imagery are not part of the release.
+docs/
+images/
+assets/
+scripts/
+argocd/
+*.md
+.github/
+.git/
