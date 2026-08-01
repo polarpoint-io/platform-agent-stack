@@ -1,7 +1,7 @@
 @startuml c4-container
 ' C4 level 2 — containers, drawn along the repo boundaries.
 ' Each System_Boundary is a git repo; the parts inside platform-agent-stack
-' are directories, which is the whole point of the three-repo layout.
+' are directories within it.
 !include c4-plantuml/C4_Container.puml
 
 title Container view — three repos
@@ -54,7 +54,7 @@ Rel(itsmagent, confl, "Looks up")
 Rel(provider, itsmext, "MCP")
 Rel(confl, conflext, "read-only", $tags="readonly")
 Rel(itsmagent, policy, "Every write gated by", $tags="gated")
-Rel(policy, mappings, "Same repo: one commit, one review, one check")
+Rel(policy, mappings, "Verbs resolved against these")
 Rel(mappings, provider, "Resolves verbs to tool names")
 
 Rel(llmcfg, foundry, "Routes agent reasoning to")

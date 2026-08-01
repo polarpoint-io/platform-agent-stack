@@ -1,5 +1,5 @@
-# Three repos. Everything under `contains` is a directory in THIS repo —
-# it moved here from a sibling repo on purpose. See README.md ("Why three").
+# Everything under `contains` is a directory in this repo.
+# `separate_repos` are checked out alongside it.
 repo: platform-agent-stack
 owns: "Agent topology, risk policy and the pluggable backends, in one place"
 

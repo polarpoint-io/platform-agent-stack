@@ -24,10 +24,6 @@ actionPolicy   ../policy/risk-tiers.yaml
 actionMapping  ../itsm-providers/action-mappings/${ITSM_PROVIDER}.yaml
 ```
 
-An earlier cut of this repo kept those as sibling repos behind
-`$RISK_POLICY_REPO` and `$ITSM_PROVIDERS_REPO`. That indirection is gone
-— see the root README for why.
-
 ## Related
 
 - [`../policy`](../policy) — the tiers these agents are gated by

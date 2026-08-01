@@ -18,7 +18,7 @@ server's tool list is not — upgrade a provider and you can acquire new
 verbs without this file changing. Anything unrecognised gets drafted for
 a human rather than run.
 
-## Kept next to the mappings on purpose
+## Paired with the action mappings
 
 This policy names generic verbs;
 [`../itsm-providers/action-mappings/`](../itsm-providers/action-mappings)
@@ -26,9 +26,10 @@ binds them to a backend's real tool names. If the two disagree, an action
 reaches the backend ungated — and it fails silently, which is the worst
 way for a safety control to fail.
 
-While these lived in separate repos that could not be one commit, one
-review, or one check. Now `setup.sh` refuses to proceed on a missing
-mapping and warns on any mapped verb that appears in no tier.
+Keeping them together means a policy change and the mapping change it
+depends on are one commit and one review. `setup.sh` refuses to proceed
+on a missing mapping and warns on any mapped verb that appears in no
+tier.
 
 ## Changing this
 

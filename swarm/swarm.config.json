@@ -33,8 +33,8 @@
       ],
       "actionPolicy": "../policy/risk-tiers.yaml",
       "actionMapping": "../itsm-providers/action-mappings/${ITSM_PROVIDER}.yaml",
-      "notes": "ITSM backend and risk policy live in this same repo (../itsm-providers, ../policy) — a policy change and the mapping change it depends on are one commit and one review. Confluence via direct REST read, for environments where Confluence MCP isn't available or wanted."
+      "notes": "ITSM backend and risk policy live in this same repo (../itsm-providers, ../policy), so a policy change and the mapping change it depends on are one commit and one review. Confluence via direct REST read, for environments where Confluence MCP isn't available or wanted."
     }
   ],
-  "_layout": "Single repo. swarm/, policy/, itsm-providers/, llm-providers/ and confluence-toolset/ are directories, not sibling repos — paths below are relative to this file. ruflo-bridge and mongostate-crossplane remain separate repos because both are independently released artifacts."
+  "_layout": "swarm/, policy/, itsm-providers/, llm-providers/ and confluence-toolset/ are directories in this repo; paths below are relative to this file. ruflo-bridge and mongostate-crossplane are separate repos, checked out alongside."
 }
