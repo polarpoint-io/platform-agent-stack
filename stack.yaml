@@ -1,0 +1,17 @@
+components:
+  - repo: ruflo-bridge
+    owns: "K8s/Helm/KEDA runtime for the Ruflo MCP bridge"
+  - repo: agent-swarm-topology
+    owns: "Which agents exist, their toolsets, and how they're wired — swarm.config.json"
+  - repo: mongostate-crossplane
+    owns: "Portable Mongo-compatible state store — Crossplane XRD, works across azure/aws/gcp/baremetal"
+  - repo: llm-inference-providers
+    owns: "Which LLM backend agents call — Azure AI Foundry now, Modelplane self-host later"
+  - repo: itsm-providers
+    owns: "Pluggable ITSM MCP servers — Freshservice proven, ServiceNow/Jira templates"
+  - repo: confluence-toolset
+    owns: "Read-only Confluence access via REST, for when Confluence MCP isn't available"
+  - repo: agent-risk-policy
+    owns: "Risk-tiered action gating — what runs unattended vs. needs approval"
+  - repo: polarpoint-io/holmesgpt-runbook-mcp
+    owns: "Already exists, not part of this breakout — runbook search/gap-detection/drafting/RCA for sre-investigator. Its runbook_draft action is now gated by agent-risk-policy (tier_2)."

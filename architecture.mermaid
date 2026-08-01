@@ -1,0 +1,69 @@
+flowchart TB
+    REQ[Incoming request<br/>Slack / alert / ticket]
+
+    subgraph RB["ruflo-bridge — K8s + KEDA"]
+        TR[triage-router]
+    end
+
+    subgraph SRE["agent-swarm-topology: sre-investigator"]
+        HOLMES[HolmesGPT<br/>read-only]
+    end
+
+    subgraph OBS["existing observability"]
+        K8S[Kubernetes / Prometheus / Thanos / Grafana]
+        AZMCP[Azure MCP<br/>readOnlyMode: true]
+    end
+
+    subgraph RUNBOOK["polarpoint-io/holmesgpt-runbook-mcp — existing"]
+        RBSEARCH[runbook_search / get / RCA<br/>read-only]
+        RBDRAFT[runbook_draft<br/>opens draft PR/MR]
+    end
+
+    subgraph REMED["Kubernetes Remediation MCP — NOT enabled"]
+        K8SREM[restart / scale / drain]
+    end
+
+    subgraph ITSM["agent-swarm-topology: itsm-support"]
+        ITSMAGENT[itsm-support agent]
+    end
+
+    subgraph ITSMPROV["itsm-providers"]
+        FS[Freshservice MCP<br/>pluggable]
+    end
+
+    subgraph CONFL["confluence-toolset"]
+        CONF[Confluence REST read]
+    end
+
+    subgraph POLICY["agent-risk-policy — shared by both agents"]
+        POL[risk-tiers.yaml<br/>4 tiers, read-only → never-auto]
+    end
+
+    subgraph STATE["mongostate-crossplane"]
+        MONGO[(Mongo state<br/>azure · aws · gcp · baremetal)]
+    end
+
+    subgraph LLM["llm-inference-providers"]
+        FOUNDRY[Azure AI Foundry — now]
+        MP[Modelplane — future self-host]
+    end
+
+    REQ --> TR
+    TR -->|infra incident| HOLMES
+    TR -->|ITSM ticket / knowledge| ITSMAGENT
+    HOLMES -->|read-only| K8S
+    HOLMES -->|read-only| AZMCP
+    HOLMES --> RBSEARCH
+    HOLMES --> RBDRAFT
+    RBDRAFT -.->|gated, tier 2| POL
+    HOLMES -.->|available, not wired in| K8SREM
+    K8SREM -.->|would need tier 3/4| POL
+    ITSMAGENT --> FS
+    ITSMAGENT --> CONF
+    ITSMAGENT -.->|gated by| POL
+    TR -->|swarm state| MONGO
+    TR -.->|all agents' LLM calls| FOUNDRY
+    MP -.->|later, alongside, not instead of| FOUNDRY
+
+    classDef notEnabled stroke-dasharray: 5 5,opacity:0.6
+    class REMED,K8SREM notEnabled
