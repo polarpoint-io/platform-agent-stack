@@ -3,12 +3,18 @@
 Which LLM backend the agents call — Azure AI Foundry now, Modelplane
 self-host later. Swapping backends shouldn't touch the swarm.
 
-## What will live here
+## What's here
 
-- Provider config for Azure AI Foundry (current)
-- Provider config for Modelplane (later — *alongside* Foundry, not
-  instead of it)
-- A selection mechanism so a swap doesn't reach into agent definitions
+- `foundry.yaml` — Azure AI Foundry, the current backend
+- `modelplane.yaml.example` — self-hosted, intended to run *alongside*
+  Foundry rather than replace it. Rename to `modelplane.yaml` to enable.
+
+Credentials come from the environment in both. Nothing secret belongs in
+these files.
+
+The split between `models.default` and `models.triage` is the point:
+triage is high-volume and low-stakes, investigation is the opposite, so a
+cheaper model on the router is worth having.
 
 ## Open items
 

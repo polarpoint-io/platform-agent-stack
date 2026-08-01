@@ -1,0 +1,63 @@
+@startuml c4-container
+' C4 level 2 — containers, drawn along the repo boundaries.
+' Each System_Boundary is a git repo; the parts inside platform-agent-stack
+' are directories, which is the whole point of the three-repo layout.
+!include c4-plantuml/C4_Container.puml
+
+title Container view — three repos
+
+AddElementTag("notEnabled", $bgColor="#4a4a4a", $fontColor="#cfcfcf", $borderColor="#8a8a8a", $legendText="deliberately not enabled")
+AddRelTag("gated", $textColor="#c1121f", $lineColor="#c1121f", $lineStyle=DashedLine())
+AddRelTag("readonly", $lineStyle=DashedLine())
+
+Person(engineer, "Engineer / on-call")
+
+System_Boundary(bridge, "repo: ruflo-bridge") {
+    Container(runtime, "Ruflo MCP bridge", "Helm + KEDA on Kubernetes", "Pinned >= 3.16.3 (CVE-2026-59726). NetworkPolicy-scoped.")
+    Container(triage, "triage-router", "Ruflo agent", "Classifies each request and routes it")
+}
+
+System_Boundary(pas, "repo: platform-agent-stack") {
+    Container(sre, "sre-investigator", "swarm/ — wraps HolmesGPT", "Read-only investigation")
+    Container(itsmagent, "itsm-support", "swarm/", "Ticket and knowledge work")
+    ContainerDb(policy, "risk-tiers.yaml", "policy/", "4 tiers. Unlisted verbs fail closed to tier 4.")
+    ContainerDb(mappings, "action-mappings/", "itsm-providers/", "Generic verbs to a backend's real tool names")
+    Container(provider, "providers/", "itsm-providers/", "MCP server definition per backend")
+    Container(confl, "confluence-toolset/", "REST client", "Read path only, by design")
+    Container(llmcfg, "llm-providers/", "config", "Foundry now, Modelplane later")
+}
+
+System_Boundary(state, "repo: mongostate-crossplane") {
+    ContainerDb(mongo, "Mongo-compatible state", "Crossplane XRD + Compositions", "One API across azure, aws, gcp, baremetal")
+}
+
+System_Ext(obs, "Observability", "K8s, Prometheus, Thanos, Grafana, Azure MCP")
+System_Ext(itsmext, "ITSM backend", "Freshservice MCP")
+System_Ext(conflext, "Confluence", "REST")
+System_Ext(runbooks, "holmesgpt-runbook-mcp", "search / RCA / draft PR")
+System_Ext(foundry, "Azure AI Foundry", "LLM inference")
+System_Ext(remediation, "Kubernetes Remediation MCP", "restart / scale / drain", $tags="notEnabled")
+
+Rel(engineer, triage, "Slack / alert / ticket")
+Rel(runtime, triage, "Hosts")
+Rel(triage, sre, "infra incident")
+Rel(triage, itsmagent, "ITSM ticket / knowledge")
+Rel(triage, mongo, "Swarm state")
+
+Rel(sre, obs, "Investigates", "read-only", $tags="readonly")
+Rel(sre, runbooks, "Searches; runbook_draft opens a PR")
+Rel(runbooks, policy, "runbook_draft gated at tier 2", $tags="gated")
+Rel_D(sre, remediation, "Would need tier 3/4", "not wired in")
+
+Rel(itsmagent, provider, "Invokes tools via")
+Rel(itsmagent, confl, "Looks up")
+Rel(provider, itsmext, "MCP")
+Rel(confl, conflext, "read-only", $tags="readonly")
+Rel(itsmagent, policy, "Every write gated by", $tags="gated")
+Rel(policy, mappings, "Same repo: one commit, one review, one check")
+Rel(mappings, provider, "Resolves verbs to tool names")
+
+Rel(llmcfg, foundry, "Routes agent reasoning to")
+
+SHOW_LEGEND()
+@enduml

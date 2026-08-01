@@ -1,0 +1,31 @@
+@startuml c4-context
+' C4 level 1 — system context.
+' C4-PlantUML is vendored under c4-plantuml/ so rendering needs no network.
+!include c4-plantuml/C4_Context.puml
+
+title System context — SRE + ITSM agent platform
+
+AddElementTag("notEnabled", $bgColor="#4a4a4a", $fontColor="#cfcfcf", $borderColor="#8a8a8a", $legendText="deliberately not enabled")
+
+Person(engineer, "Engineer / on-call", "Raises incidents, asks questions, approves gated actions")
+
+System(platform, "SRE + ITSM agent platform", "Ruflo-orchestrated agent swarm. Triages a request, investigates infrastructure read-only, or handles an ITSM ticket. Every write is gated by a shared risk tier.")
+
+System_Ext(obs, "Observability", "Kubernetes, Prometheus, Thanos, Grafana, Azure MCP — all read-only")
+System_Ext(itsm, "ITSM backend", "Freshservice today; ServiceNow / Jira SM swappable without touching the swarm")
+System_Ext(confluence, "Confluence", "Knowledge base, read-only over REST")
+System_Ext(runbooks, "Runbook MCP", "holmesgpt-runbook-mcp — search, RCA, and draft PRs")
+System_Ext(llm, "LLM inference", "Azure AI Foundry now; Modelplane self-host later, alongside")
+System_Ext(remediation, "Kubernetes Remediation MCP", "restart / scale / drain", $tags="notEnabled")
+
+Rel(engineer, platform, "Reports incidents, asks questions", "Slack / alert / ticket")
+Rel(platform, engineer, "Requests approval for tier 3+, drafts tier 4", "Slack")
+Rel(platform, obs, "Investigates", "read-only")
+Rel(platform, itsm, "Searches, comments, updates", "MCP")
+Rel(platform, confluence, "Looks up", "REST, read-only")
+Rel(platform, runbooks, "Searches; opens draft PRs", "MCP")
+Rel(platform, llm, "Agent reasoning", "HTTPS")
+Rel_D(platform, remediation, "Would need tier 3/4 first", "not wired in")
+
+SHOW_LEGEND()
+@enduml

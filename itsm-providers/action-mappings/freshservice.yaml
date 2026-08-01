@@ -1,0 +1,37 @@
+# Generic policy verb  ->  the tool name this MCP server actually exposes.
+#
+# READ THIS BEFORE EDITING
+# The left column must match a verb in ../../policy/risk-tiers.yaml. A verb
+# that appears here but in no tier falls to default_policy.unlisted_action
+# (tier_4_draft_only) — setup.sh warns when that happens.
+#
+# The failure this file causes is silent: map a verb to the wrong tool and
+# the agent performs an action under the wrong tier's gating. Nothing
+# errors. So do not guess the right column.
+#
+# TODO(verify): every tool name below is unconfirmed. Get the real list:
+#     npx -y freshservice-mcp-server@latest --list-tools
+# or start the server and call tools/list, then correct these.
+
+provider: freshservice
+
+actions:
+  # tier 1 — read-only
+  search_tickets:      freshservice_search_tickets      # TODO(verify)
+  get_ticket:          freshservice_get_ticket          # TODO(verify)
+  list_kb_articles:    freshservice_list_solutions      # TODO(verify)
+
+  # tier 2 — low-risk write, executes and notifies
+  add_ticket_comment:  freshservice_add_note            # TODO(verify)
+  update_ticket_status: freshservice_update_ticket      # TODO(verify)
+
+  # tier 3 — needs human approval before executing
+  create_ticket:       freshservice_create_ticket       # TODO(verify)
+  close_ticket:        freshservice_close_ticket        # TODO(verify)
+  assign_ticket:       freshservice_assign_ticket       # TODO(verify)
+
+  # tier 4 — agent drafts, human performs. Deliberately NOT mapped.
+  # grant_access / revoke_access / modify_identity have no entry here on
+  # purpose: an unmapped verb cannot be executed at all. Adding a mapping
+  # makes the action reachable — do that only alongside a decision about
+  # who approves it.

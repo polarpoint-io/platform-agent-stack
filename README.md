@@ -47,10 +47,28 @@ platform-agent-stack/
 │   └── action-mappings/   <name>.yaml — generic verbs to real tool names
 ├── llm-providers/         Foundry now, Modelplane later
 ├── confluence-toolset/    read-only REST, no MCP required
-├── architecture.mermaid
+├── docs/diagrams/         C4 model — .puml source + committed SVG
 ├── stack.yaml
 └── setup.sh
 ```
+
+## Architecture
+
+C4 model. Source is `docs/diagrams/*.puml` (C4-PlantUML, vendored so it
+renders offline); the SVGs are committed because GitHub cannot render
+PlantUML in markdown. Edit the `.puml`, run `./docs/diagrams/render.sh`,
+commit both — CI fails if they drift apart.
+
+### Level 1 — system context
+
+![System context](docs/diagrams/c4-context.svg)
+
+### Level 2 — containers
+
+Boundaries here are git repos. Everything inside `platform-agent-stack`
+is a directory, which is the point of the three-repo layout.
+
+![Container view](docs/diagrams/c4-container.svg)
 
 ## Running it
 
@@ -77,3 +95,12 @@ Advisory GHSA-c4hm-4h84-2cf3.
 The patch closes the *default* exposure. It does not authenticate a
 bridge endpoint you publish on purpose — the NetworkPolicy check is
 still yours to do.
+
+## The stack
+
+| Repo | Owns |
+|---|---|
+| [`platform-agent-stack`](https://github.com/polarpoint-io/platform-agent-stack) | Agent topology, risk policy, pluggable ITSM/LLM/Confluence backends |
+| [`ruflo-bridge`](https://github.com/polarpoint-io/ruflo-bridge) | K8s + Helm + KEDA runtime for the Ruflo MCP bridge |
+| [`mongostate-crossplane`](https://github.com/polarpoint-io/mongostate-crossplane) | Portable Mongo-compatible state across four platforms |
+| [`holmesgpt-runbook-mcp`](https://github.com/polarpoint-io/holmesgpt-runbook-mcp) | Pre-existing — runbook search, RCA and drafting |

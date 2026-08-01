@@ -1,0 +1,11 @@
+{
+  "itsm": {
+    "command": "npx",
+    "args": ["-y", "freshservice-mcp-server@latest"],
+    "env": {
+      "FRESHSERVICE_DOMAIN": "${FRESHSERVICE_DOMAIN}",
+      "FRESHSERVICE_API_KEY": "${FRESHSERVICE_API_KEY}"
+    },
+    "_todo_verify": "Package name and env var names are the general shape, not confirmed. Several community Freshservice MCP servers exist with different install commands and credential variables. Install the one you intend to use, run it, and correct this file from what it actually wants. Credentials come from the environment — never commit them here."
+  }
+}

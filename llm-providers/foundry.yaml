@@ -1,0 +1,30 @@
+# Azure AI Foundry — the LLM backend agents call today.
+#
+# TODO(verify): this is the general OpenAI-compatible provider shape. It
+# has NOT been checked against Ruflo's current provider schema — the key
+# names here may not be what Ruflo reads. Confirm against your installed
+# version before relying on it:
+#     npx ruflo@3.30.2 config schema provider
+#
+# Credentials come from the environment. Nothing secret belongs in here.
+
+provider: azure-ai-foundry
+type: openai-compatible
+
+endpoint: ${AZURE_FOUNDRY_ENDPOINT}
+apiKey: ${AZURE_FOUNDRY_API_KEY}
+apiVersion: "2026-02-01"   # TODO(verify) against your deployment
+
+models:
+  default: ${AZURE_FOUNDRY_DEPLOYMENT}
+  # Triage is high-volume and low-stakes; investigation is the opposite.
+  # Splitting them is what makes a cheaper model on the router worthwhile.
+  triage: ${AZURE_FOUNDRY_DEPLOYMENT_FAST}
+
+timeouts:
+  requestSeconds: 120
+  connectSeconds: 10
+
+retry:
+  maxAttempts: 3
+  backoff: exponential

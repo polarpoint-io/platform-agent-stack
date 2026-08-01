@@ -1,0 +1,27 @@
+name: diagrams
+
+# The rendered SVGs are committed, so they can drift from their .puml
+# source. This re-renders and fails if the result differs from what's in
+# the tree — a diagram that lies is worse than no diagram.
+on:
+  pull_request:
+    paths: ['docs/diagrams/**']
+  push:
+    branches: [main]
+    paths: ['docs/diagrams/**']
+
+jobs:
+  check-rendered:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - run: sudo apt-get update && sudo apt-get install -y graphviz
+      - run: ./docs/diagrams/render.sh
+      - name: Fail if committed SVGs are stale
+        run: |
+          if ! git diff --exit-code -- 'docs/diagrams/*.svg'; then
+            echo "::error::Committed SVGs do not match their .puml source. Run ./docs/diagrams/render.sh and commit the result."
+            exit 1
+          fi
