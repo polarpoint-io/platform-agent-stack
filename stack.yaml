@@ -1,17 +1,27 @@
-components:
+# Three repos. Everything under `contains` is a directory in THIS repo —
+# it moved here from a sibling repo on purpose. See README.md ("Why three").
+repo: platform-agent-stack
+owns: "Agent topology, risk policy and the pluggable backends, in one place"
+
+contains:
+  - path: swarm/
+    owns: "Which agents exist, their toolsets, how they're wired — swarm.config.json"
+  - path: policy/
+    owns: "Risk-tiered action gating — what runs unattended vs. needs approval"
+  - path: itsm-providers/
+    owns: "Pluggable ITSM MCP backends and their action mappings"
+  - path: llm-providers/
+    owns: "Which LLM backend agents call — Azure AI Foundry now, Modelplane later"
+  - path: confluence-toolset/
+    owns: "Read-only Confluence access via REST, for when Confluence MCP isn't available"
+
+separate_repos:
   - repo: ruflo-bridge
     owns: "K8s/Helm/KEDA runtime for the Ruflo MCP bridge"
-  - repo: agent-swarm-topology
-    owns: "Which agents exist, their toolsets, and how they're wired — swarm.config.json"
-  - repo: mongostate-crossplane
-    owns: "Portable Mongo-compatible state store — Crossplane XRD, works across azure/aws/gcp/baremetal"
-  - repo: llm-inference-providers
-    owns: "Which LLM backend agents call — Azure AI Foundry now, Modelplane self-host later"
-  - repo: itsm-providers
-    owns: "Pluggable ITSM MCP servers — Freshservice proven, ServiceNow/Jira templates"
-  - repo: confluence-toolset
-    owns: "Read-only Confluence access via REST, for when Confluence MCP isn't available"
-  - repo: agent-risk-policy
-    owns: "Risk-tiered action gating — what runs unattended vs. needs approval"
+    why: "Independently released Helm artifact with its own version stream"
   - repo: polarpoint-io/holmesgpt-runbook-mcp
-    owns: "Already exists, not part of this breakout — runbook search/gap-detection/drafting/RCA for sre-investigator. Its runbook_draft action is now gated by agent-risk-policy (tier_2)."
+    owns: "Already exists — runbook search/gap-detection/drafting/RCA for sre-investigator"
+    why: "Pre-existing, not part of this breakout. runbook_draft is gated at tier_2"
+  - repo: mongostate-crossplane
+    owns: "Portable Mongo-compatible state store — azure/aws/gcp/baremetal"
+    why: "Crossplane XRDs are applied by whoever owns the cluster, often under different RBAC"

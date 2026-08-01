@@ -1,0 +1,40 @@
+{
+  "topology": "hierarchical",
+  "maxAgents": 4,
+  "maxAgentsNote": "One more than the 3 agents defined below — deliberate headroom for a 4th specialist. platform-agent-stack/setup.sh reads this value rather than hardcoding it, so the two cannot drift.",
+  "agents": [
+    {
+      "id": "triage-router",
+      "role": "coordinator",
+      "description": "Classifies each incoming request — infra incident, ITSM ticket, or knowledge lookup — and routes to the matching specialist agent."
+    },
+    {
+      "id": "sre-investigator",
+      "role": "specialist",
+      "wraps": "holmesgpt",
+      "access": "read-only",
+      "toolsets": [
+        "kubernetes",
+        "prometheus",
+        "grafana",
+        "thanos",
+        "azure-mcp",
+        "holmesgpt-runbook-mcp"
+      ],
+      "actionPolicy": "../policy/risk-tiers.yaml",
+      "notes": "Existing HolmesGPT setup from ai-capabilities. azure-mcp added read-only (readOnlyMode: true — matches current azure/aks footprint; aws-mcp/gcp-mcp available the same way if the multi-cloud state work in mongostate-crossplane ever needs matching investigation coverage there). holmesgpt-runbook-mcp adds runbook_search/get/root_cause_analyse (read) plus runbook_draft, which opens a draft PR/MR — a write action, now gated by actionPolicy same as itsm-support. Kubernetes Remediation (MCP) exists upstream (restart/scale/drain) but is deliberately not enabled — would need the same tiering before it is."
+    },
+    {
+      "id": "itsm-support",
+      "role": "specialist",
+      "toolsets": [
+        "itsm",
+        "confluence-read"
+      ],
+      "actionPolicy": "../policy/risk-tiers.yaml",
+      "actionMapping": "../itsm-providers/action-mappings/${ITSM_PROVIDER}.yaml",
+      "notes": "ITSM backend and risk policy live in this same repo (../itsm-providers, ../policy) — a policy change and the mapping change it depends on are one commit and one review. Confluence via direct REST read, for environments where Confluence MCP isn't available or wanted."
+    }
+  ],
+  "_layout": "Single repo. swarm/, policy/, itsm-providers/, llm-providers/ and confluence-toolset/ are directories, not sibling repos — paths below are relative to this file. ruflo-bridge and mongostate-crossplane remain separate repos because both are independently released artifacts."
+}

@@ -1,0 +1,55 @@
+# Risk-tiered execution policy — shared across itsm-support AND
+# sre-investigator. Tier goes up as blast radius goes up. Nothing above
+# tier 2 runs unattended.
+
+# How an action that appears in NO tier below is treated. Enumerating
+# four tiers says nothing about the unlisted verb, and the unlisted verb
+# is exactly the one a new MCP server introduces — a tool list can grow
+# without this file changing. Fail closed.
+default_policy:
+  unlisted_action: tier_4_draft_only
+  on_unlisted: warn   # log the verb by name so it can be tiered properly
+  # Set to tier_1_auto only if you have a specific reason and have
+  # accepted that any newly-added tool executes unattended by default.
+
+risk_tiers:
+
+  tier_1_auto:
+    description: "Read-only or fully reversible — no approval needed"
+    actions:
+      - search_tickets
+      - get_ticket
+      - search_confluence
+      - get_confluence_page
+      - list_kb_articles
+      - runbook_search
+      - runbook_get
+      - runbook_gap_detect   # read-only analysis; reports missing runbook
+                             # coverage, writes nothing
+      - root_cause_analyse
+      - investigation_classify
+
+  tier_2_notify:
+    description: "Low-risk write — executes immediately, posts to Slack for visibility"
+    actions:
+      - add_ticket_comment
+      - update_ticket_status
+      - runbook_draft   # opens a draft PR/MR — inert until a human merges it
+
+  tier_3_approval:
+    description: "Requires explicit human approval before executing"
+    actions:
+      - create_ticket
+      - close_ticket
+      - assign_ticket
+      - k8s_restart   # Kubernetes Remediation (MCP) — not currently enabled;
+      - k8s_scale     # tiering documented here so it's ready if that changes
+
+  tier_4_draft_only:
+    description: "Agent drafts the action; a human performs it. Never auto-executed."
+    actions:
+      - grant_access
+      - revoke_access
+      - modify_identity
+      - modify_production_infra
+      - k8s_drain     # Kubernetes Remediation (MCP) — not currently enabled

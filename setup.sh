@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Clones every sibling repo (if not already present) and wires the
-# env vars agent-swarm-topology's swarm.config.json expects.
-# Run this FROM platform-agent-stack/, once, before anything else.
+# Brings the stack up. Run this FROM platform-agent-stack/.
 #
-# Writes stack.env — source that from your shell (or .envrc) afterwards.
-# This script cannot export into your parent shell; nothing that runs as
-# a subprocess can.
+# Most of what this repo needs is already here — swarm/, policy/,
+# itsm-providers/, llm-providers/, confluence-toolset/ are directories,
+# not sibling repos, so there is nothing to clone or wire for them and no
+# env vars to persist. Only ruflo-bridge is a separate checkout, because
+# it is an independently released Helm artifact.
 
-ORG="${GH_ORG:?set to your GitHub org, e.g. polarpoint-io}"
 BASE_DIR="${BASE_DIR:-..}"
-ITSM_PROVIDER="${ITSM_PROVIDER:?set to a name under itsm-providers/, e.g. freshservice}"
+ORG="${GH_ORG:-polarpoint-io}"
+ITSM_PROVIDER="${ITSM_PROVIDER:?set to a name under itsm-providers/providers/, e.g. freshservice}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- Ruflo version -----------------------------------------------------
 # Pinned deliberately. Do NOT change back to @latest: versions before
@@ -21,7 +22,6 @@ ITSM_PROVIDER="${ITSM_PROVIDER:?set to a name under itsm-providers/, e.g. freshs
 RUFLO_MIN_VERSION="3.16.3"
 RUFLO_VERSION="${RUFLO_VERSION:-3.30.2}"
 
-# Refuse to run below the patched floor, however RUFLO_VERSION was set.
 if [ "$(printf '%s\n%s\n' "$RUFLO_MIN_VERSION" "$RUFLO_VERSION" \
         | sort -V | head -n1)" != "$RUFLO_MIN_VERSION" ]; then
   echo "ERROR: RUFLO_VERSION=$RUFLO_VERSION is below the patched floor $RUFLO_MIN_VERSION" >&2
@@ -29,55 +29,45 @@ if [ "$(printf '%s\n%s\n' "$RUFLO_MIN_VERSION" "$RUFLO_VERSION" \
   exit 1
 fi
 
-REPOS=(ruflo-bridge agent-swarm-topology mongostate-crossplane
-       llm-inference-providers itsm-providers confluence-toolset
-       agent-risk-policy)
-
-for r in "${REPOS[@]}"; do
-  if [ ! -d "$BASE_DIR/$r" ]; then
-    gh repo clone "$ORG/$r" "$BASE_DIR/$r"
-  fi
-done
-
-ITSM_PROVIDERS_REPO="$(cd "$BASE_DIR/itsm-providers" && pwd)"
-RISK_POLICY_REPO="$(cd "$BASE_DIR/agent-risk-policy" && pwd)"
-CONFLUENCE_TOOLSET_REPO="$(cd "$BASE_DIR/confluence-toolset" && pwd)"
-SWARM_TOPOLOGY_REPO="$(cd "$BASE_DIR/agent-swarm-topology" && pwd)"
-export ITSM_PROVIDERS_REPO RISK_POLICY_REPO CONFLUENCE_TOOLSET_REPO SWARM_TOPOLOGY_REPO
-
-# --- Locate the provider file -----------------------------------------
-# TODO(unresolved): this script and agent-swarm-topology disagree about
-# itsm-providers' layout. swarm.config.json points actionMapping at
-#   $ITSM_PROVIDERS_REPO/action-mappings/${ITSM_PROVIDER}.yaml
-# i.e. a subdirectory, while this script historically expected the
-# .mcp.json at the repo root. Until itsm-providers is checked in and one
-# convention wins, try both and say which candidates were tried.
-PROVIDER_FILE=""
-for candidate in \
-  "$ITSM_PROVIDERS_REPO/providers/${ITSM_PROVIDER}.mcp.json" \
-  "$ITSM_PROVIDERS_REPO/${ITSM_PROVIDER}.mcp.json"
-do
-  if [ -f "$candidate" ]; then PROVIDER_FILE="$candidate"; break; fi
-done
-
-if [ -z "$PROVIDER_FILE" ]; then
-  echo "ERROR: no provider file for ITSM_PROVIDER=$ITSM_PROVIDER. Tried:" >&2
-  echo "  $ITSM_PROVIDERS_REPO/providers/${ITSM_PROVIDER}.mcp.json" >&2
-  echo "  $ITSM_PROVIDERS_REPO/${ITSM_PROVIDER}.mcp.json" >&2
-  exit 1
+# --- ruflo-bridge: the one sibling checkout ----------------------------
+if [ ! -d "$BASE_DIR/ruflo-bridge" ]; then
+  command -v gh >/dev/null || { echo "ERROR: ruflo-bridge not found at $BASE_DIR and gh is not installed" >&2; exit 1; }
+  gh repo clone "$ORG/ruflo-bridge" "$BASE_DIR/ruflo-bridge"
 fi
-echo "Using provider file: $PROVIDER_FILE"
 
-# The matching action-mapping must exist too — swarm.config.json will
-# resolve this path at run time, and a missing mapping means ungated
-# verbs reaching the ITSM backend. Fail here instead.
-ACTION_MAPPING="$ITSM_PROVIDERS_REPO/action-mappings/${ITSM_PROVIDER}.yaml"
+# --- Provider + mapping, both in-repo ----------------------------------
+PROVIDER_FILE="$HERE/itsm-providers/providers/${ITSM_PROVIDER}.mcp.json"
+ACTION_MAPPING="$HERE/itsm-providers/action-mappings/${ITSM_PROVIDER}.yaml"
+
+[ -f "$PROVIDER_FILE" ] || { echo "ERROR: no provider file at $PROVIDER_FILE" >&2; exit 1; }
+
+# A missing mapping means the policy's generic verbs cannot resolve to real
+# tool names — the action reaches the backend ungated. Fail here instead.
 [ -f "$ACTION_MAPPING" ] || {
   echo "ERROR: no action mapping at $ACTION_MAPPING" >&2
-  echo "       agent-risk-policy gates generic verbs; without this mapping they" >&2
-  echo "       cannot be resolved to real tool names." >&2
+  echo "       policy/risk-tiers.yaml gates generic verbs; without this mapping" >&2
+  echo "       they cannot be resolved to real tool names." >&2
   exit 1
 }
+
+# Every verb the mapping names must exist in the policy, or it runs
+# untiered. This check is only possible because policy and mappings are
+# now in one repo — as sibling repos, nothing could see both sides.
+if command -v python3 >/dev/null; then
+  python3 - "$HERE/policy/risk-tiers.yaml" "$ACTION_MAPPING" <<'PYEOF'
+import sys, yaml
+policy, mapping = (yaml.safe_load(open(p)) for p in sys.argv[1:3])
+tiered = {a for t in policy.get("risk_tiers", {}).values() for a in t.get("actions", [])}
+mapped = set((mapping or {}).get("actions", {}) or {})
+unknown = sorted(mapped - tiered)
+if unknown:
+    default = policy.get("default_policy", {}).get("unlisted_action", "<unset>")
+    print(f"WARNING: {len(unknown)} mapped verb(s) appear in no tier: {', '.join(unknown)}")
+    print(f"         they will fall to default_policy.unlisted_action = {default}")
+else:
+    print(f"policy check: {len(mapped)} mapped verb(s), all tiered")
+PYEOF
+fi
 
 # --- Merge the provider into ruflo-bridge's .mcp.json ------------------
 BRIDGE_MCP="$BASE_DIR/ruflo-bridge/.mcp.json"
@@ -89,13 +79,12 @@ echo "Backed up existing .mcp.json to $BACKUP"
 
 TMP_MCP="$(mktemp)"
 trap 'rm -f "$TMP_MCP"' EXIT
-jq -s '.[0].mcpServers.itsm = .[1].itsm | .[0]' \
-  "$BRIDGE_MCP" "$PROVIDER_FILE" > "$TMP_MCP"
+jq -s '.[0].mcpServers.itsm = .[1].itsm | .[0]' "$BRIDGE_MCP" "$PROVIDER_FILE" > "$TMP_MCP"
 jq -e . "$TMP_MCP" >/dev/null || { echo "ERROR: merge produced invalid JSON" >&2; exit 1; }
 cp "$TMP_MCP" "$BRIDGE_MCP"
 
 # --- Bring up the swarm ------------------------------------------------
-SWARM_CONFIG="$SWARM_TOPOLOGY_REPO/swarm.config.json"
+SWARM_CONFIG="$HERE/swarm/swarm.config.json"
 MAX_AGENTS="$(jq -r '.maxAgents' "$SWARM_CONFIG")"
 TOPOLOGY="$(jq -r '.topology' "$SWARM_CONFIG")"
 
@@ -103,25 +92,10 @@ claude mcp add ruflo -- npx "ruflo@${RUFLO_VERSION}" mcp start
 npx "ruflo@${RUFLO_VERSION}" swarm init \
   --topology "$TOPOLOGY" --max-agents "$MAX_AGENTS"
 
-# --- Persist the env vars ---------------------------------------------
-ENV_FILE="$(pwd)/stack.env"
-cat > "$ENV_FILE" <<EOF
-# Generated by platform-agent-stack/setup.sh — safe to regenerate.
-export ITSM_PROVIDERS_REPO="$ITSM_PROVIDERS_REPO"
-export RISK_POLICY_REPO="$RISK_POLICY_REPO"
-export CONFLUENCE_TOOLSET_REPO="$CONFLUENCE_TOOLSET_REPO"
-export SWARM_TOPOLOGY_REPO="$SWARM_TOPOLOGY_REPO"
-export ITSM_PROVIDER="$ITSM_PROVIDER"
-export RUFLO_VERSION="$RUFLO_VERSION"
-EOF
-
 echo
 echo "Stack wired (ruflo ${RUFLO_VERSION}, topology ${TOPOLOGY}, max-agents ${MAX_AGENTS})."
-echo "Repo paths written to $ENV_FILE — this script cannot set them in your"
-echo "shell, so add one of the following:"
-echo "    source $ENV_FILE          # ad hoc"
-echo "    echo 'source $ENV_FILE' >> ~/.zshrc"
-echo "    echo 'source ./stack.env' >> .envrc && direnv allow"
+echo "No env vars to export — swarm/swarm.config.json resolves policy and"
+echo "mappings by relative path within this repo."
 echo
 echo "Before exposing the bridge: confirm ruflo-bridge's MCP endpoint is not"
 echo "reachable beyond its NetworkPolicy peers. The RufRoot fix closed the"

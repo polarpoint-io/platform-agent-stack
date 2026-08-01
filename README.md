@@ -1,29 +1,69 @@
 <p align="center">
-  <img src="assets/hero.svg" alt="platform-agent-stack — composes the eight component repos into one runnable stack" width="100%">
+  <img src="assets/hero.svg" alt="platform-agent-stack — agent topology, risk policy and pluggable backends in one repo" width="100%">
 </p>
 
 # platform-agent-stack
 
-**Not one of the components you asked to split out — this is the piece
-that composes the other seven.** Worth calling out explicitly: splitting
-a bundle into single-purpose repos is the right move, but it creates a
-new problem the bundle didn't have — nothing tells you how they fit back
-together, or in what order to bring them up. That's what this repo is
-for. If you'd rather fold this into `agent-swarm-topology` instead of
-keeping it separate, that's a reasonable call too — it's here as a
-default, not a strong opinion.
+Agent topology, risk policy and the pluggable backends — in one repo.
 
-## What's here
+## Why three repos, not eight
 
-- `stack.yaml` — every component repo and what it owns, in one place
-- `setup.sh` — clones any sibling repo not already checked out next to
-  this one, writes `stack.env` with the `ITSM_PROVIDERS_REPO` /
-  `RISK_POLICY_REPO` / `CONFLUENCE_TOOLSET_REPO` / `SWARM_TOPOLOGY_REPO`
-  paths, merges the chosen ITSM provider into `ruflo-bridge`'s
-  `.mcp.json` (backing up the original first), and runs swarm init
-- `stack.env` — generated, git-ignored. `source` it, or add it to your
-  `.envrc`. The script runs as a subprocess and so cannot set variables
-  in your shell; this file is how they get there.
+An earlier cut of this split every component into its own repo. That was
+too many, for a reason worth writing down: five of the eight held three
+files each, and an eighth repo existed only to reassemble what the split
+had taken apart. The env-var indirection, the clone loop, the generated
+`stack.env` — all of it was tax paid to reconnect things that never
+needed separating.
+
+The sharper problem was `policy/` and `itsm-providers/action-mappings/`.
+The policy names generic verbs; the mappings bind them to a backend's
+real tool names. If those two disagree, an action reaches the backend
+ungated — and it fails silently, which is the worst way for a safety
+control to fail. As separate repos that change could not be one commit,
+could not be one review, and no check could see both sides. Now it can:
+`setup.sh` refuses to proceed on a missing mapping and warns on any
+mapped verb that appears in no tier.
+
+The test for a separate repo is not "is this a distinct idea" — it's
+"does this have its own release cadence and its own consumers".
+
+- **`ruflo-bridge`** passes: a Helm chart is a versioned, published artifact.
+- **`mongostate-crossplane`** passes: Crossplane XRDs are applied by
+  whoever owns the cluster, frequently under different RBAC.
+- The other five did not, yet. One consumer each, and they change together.
+
+Splitting a directory out later is easy. Merging repo histories later is
+not. If `policy/` acquires a real second consumer, promote it then — the
+directory boundary is already the seam.
+
+## Layout
+
+```
+platform-agent-stack/
+├── swarm/                 swarm.config.json — agents and wiring
+├── policy/                risk-tiers.yaml — 4 tiers, unlisted fails closed
+├── itsm-providers/
+│   ├── providers/         <name>.mcp.json — the MCP server definition
+│   └── action-mappings/   <name>.yaml — generic verbs to real tool names
+├── llm-providers/         Foundry now, Modelplane later
+├── confluence-toolset/    read-only REST, no MCP required
+├── architecture.mermaid
+├── stack.yaml
+└── setup.sh
+```
+
+## Running it
+
+```sh
+ITSM_PROVIDER=freshservice ./setup.sh
+```
+
+There are no env vars to export afterwards. `swarm/swarm.config.json`
+resolves policy and mappings by relative path inside this repo — the
+`$RISK_POLICY_REPO` / `$ITSM_PROVIDERS_REPO` indirection is gone.
+
+`setup.sh` clones `ruflo-bridge` next to this repo if it isn't already
+there (override with `BASE_DIR`).
 
 ## Ruflo version
 
@@ -37,20 +77,3 @@ Advisory GHSA-c4hm-4h84-2cf3.
 The patch closes the *default* exposure. It does not authenticate a
 bridge endpoint you publish on purpose — the NetworkPolicy check is
 still yours to do.
-
-## Assumed layout
-
-```
-polarpoint/
-├── platform-agent-stack/   ← run setup.sh from here
-├── ruflo-bridge/
-├── agent-swarm-topology/
-├── mongostate-crossplane/
-├── llm-inference-providers/
-├── itsm-providers/
-├── confluence-toolset/
-└── agent-risk-policy/
-```
-
-`BASE_DIR` in `setup.sh` defaults to `..` — override it if you check
-these out somewhere else.
