@@ -65,13 +65,13 @@ externalSecrets:
     # jira-service-management, this block becomes unused unless you also
     # swap to self-hosted mcp-atlassian.
     itsm:
-      remoteKey: platform-agent-stack/itsm
+      remoteKey: platform-agent-stack-itsm
       properties: [FRESHSERVICE_DOMAIN, FRESHSERVICE_APIKEY]
     llm:
-      remoteKey: platform-agent-stack/llm
+      remoteKey: platform-agent-stack-llm
       properties: [MODELPLANE_ENDPOINT, MODELPLANE_API_KEY, MODELPLANE_MODEL]
     confluence:
-      remoteKey: platform-agent-stack/confluence
+      remoteKey: platform-agent-stack-confluence
       properties: [CONFLUENCE_BASE_URL, CONFLUENCE_USER, CONFLUENCE_API_TOKEN]
 
 resources:
