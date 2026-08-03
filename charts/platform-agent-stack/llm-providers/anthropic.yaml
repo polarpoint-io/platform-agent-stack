@@ -1,0 +1,18 @@
+# Anthropic — the LLM backend the bridge calls (triage classification +
+# itsm-support's tool-calling). Reuses the same Anthropic account/API
+# key already in use for HolmesGPT itself (holmes-llm-keys secret, on
+# the multitenant cluster) - not a new subscription. This cluster
+# (tooling) needs its own copy of the key since secrets don't cross
+# clusters; see externalSecrets.keys.llm in values.yaml for where it's
+# seeded here.
+#
+# Chosen over standing up a separate self-hosted LLM gateway
+# (Modelplane/Foundry, both openai-compatible) for something this
+# small - see bridge/src/llm.js's anthropicCompletion() for the native
+# Messages API implementation (no proxy/gateway needed in front of it).
+
+provider: anthropic
+type: anthropic
+
+apiKey: ${ANTHROPIC_API_KEY}
+model: claude-sonnet-5

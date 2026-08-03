@@ -1,31 +1,75 @@
-// Talks to whichever LLM backend llm-provider.yaml selects. Both
-// modelplane.yaml and foundry.yaml declare `type: openai-compatible`,
-// so this assumes the standard OpenAI chat-completions shape
-// (POST {endpoint}/chat/completions, Bearer apiKey). Both provider
-// files carry their own "TODO(verify): schema unconfirmed" note - same
-// caveat applies here. Confirm against your real Modelplane endpoint
-// before trusting this in production; this is the same "verify against
-// the live thing, not the example" rule the ITSM providers carry.
+// Talks to whichever LLM backend llm-provider.yaml selects. Two shapes
+// supported: `type: anthropic` (Anthropic's native Messages API) and
+// `type: openai-compatible` (Modelplane/Foundry-style proxies). Callers
+// always get back and pass in the OpenAI-style shape
+// ({content, tool_calls: [{function: {name, arguments}}]}) - Anthropic
+// requests/responses are translated to/from that shape here, so
+// itsmAgent.js and everything else stays backend-agnostic.
 
-export async function chatCompletion(llmProvider, { messages, tools, toolChoice }) {
-  if (llmProvider.type !== "openai-compatible") {
-    throw new Error(`llm-provider type "${llmProvider.type}" is not supported yet - only openai-compatible is implemented`);
-  }
-  const endpoint = llmProvider.endpoint.replace(/\/$/, "");
+const ANTHROPIC_VERSION = "2023-06-01";
+const ANTHROPIC_MAX_TOKENS = 1024;
+
+async function anthropicCompletion(llmProvider, { messages, tools, toolChoice }) {
+  // Anthropic wants system content as a top-level field, not a message.
+  const systemMessages = messages.filter((m) => m.role === "system");
+  const system = systemMessages.map((m) => m.content).join("\n\n") || undefined;
+  const conversation = messages
+    .filter((m) => m.role !== "system")
+    .map((m) => ({ role: m.role, content: m.content }));
+
   const body = {
-    model: llmProvider.models.default,
-    messages,
+    model: llmProvider.model,
+    max_tokens: ANTHROPIC_MAX_TOKENS,
+    system,
+    messages: conversation,
   };
+  if (tools) {
+    // OpenAI function schema -> Anthropic tool schema.
+    body.tools = tools.map((t) => ({
+      name: t.function.name,
+      description: t.function.description,
+      input_schema: t.function.parameters,
+    }));
+    if (toolChoice === "required") body.tool_choice = { type: "any" };
+    else if (typeof toolChoice === "object") body.tool_choice = { type: "tool", name: toolChoice.function?.name };
+  }
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": llmProvider.apiKey,
+      "anthropic-version": ANTHROPIC_VERSION,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`Anthropic API returned ${resp.status}: ${text.slice(0, 500)}`);
+  }
+  const data = await resp.json();
+
+  // Anthropic's response -> the OpenAI-style shape callers expect.
+  const textBlocks = data.content.filter((b) => b.type === "text").map((b) => b.text);
+  const toolUseBlocks = data.content.filter((b) => b.type === "tool_use");
+  return {
+    content: textBlocks.length ? textBlocks.join("\n") : null,
+    tool_calls: toolUseBlocks.length
+      ? toolUseBlocks.map((b) => ({ id: b.id, function: { name: b.name, arguments: JSON.stringify(b.input) } }))
+      : undefined,
+  };
+}
+
+async function openaiCompatibleCompletion(llmProvider, { messages, tools, toolChoice }) {
+  const endpoint = llmProvider.endpoint.replace(/\/$/, "");
+  const body = { model: llmProvider.models.default, messages };
   if (tools) {
     body.tools = tools;
     body.tool_choice = toolChoice || "auto";
   }
   const resp = await fetch(`${endpoint}/chat/completions`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${llmProvider.apiKey}`,
-    },
+    headers: { "content-type": "application/json", authorization: `Bearer ${llmProvider.apiKey}` },
     body: JSON.stringify(body),
   });
   if (!resp.ok) {
@@ -34,6 +78,12 @@ export async function chatCompletion(llmProvider, { messages, tools, toolChoice 
   }
   const data = await resp.json();
   return data.choices?.[0]?.message;
+}
+
+export async function chatCompletion(llmProvider, params) {
+  if (llmProvider.type === "anthropic") return anthropicCompletion(llmProvider, params);
+  if (llmProvider.type === "openai-compatible") return openaiCompatibleCompletion(llmProvider, params);
+  throw new Error(`llm-provider type "${llmProvider.type}" is not supported - only "anthropic" and "openai-compatible" are implemented`);
 }
 
 // Front-door classification. Deliberately a single cheap completion, not

@@ -5,7 +5,7 @@ itsmProvider: freshservice
 
 # Which LLM backend to wire in. Must match a file under llm-providers/
 # (rename the .example to enable it). The chart fails to render if missing.
-llmProvider: modelplane
+llmProvider: anthropic
 
 image:
   # bridge/ in this repo, not a Ruflo image - see bridge/README.md for
@@ -69,7 +69,7 @@ externalSecrets:
       properties: [FRESHSERVICE_DOMAIN, FRESHSERVICE_APIKEY]
     llm:
       remoteKey: platform-agent-stack-llm
-      properties: [MODELPLANE_ENDPOINT, MODELPLANE_API_KEY, MODELPLANE_MODEL]
+      properties: [ANTHROPIC_API_KEY]
     confluence:
       remoteKey: platform-agent-stack-confluence
       properties: [CONFLUENCE_BASE_URL, CONFLUENCE_USER, CONFLUENCE_API_TOKEN]
