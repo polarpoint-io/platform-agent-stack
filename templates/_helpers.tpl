@@ -46,3 +46,16 @@ the action would reach the backend ungated — silently. Fail at render.
 {{- fail (printf "itsmProvider=%q has a provider file but no action mapping at %s. policy/risk-tiers.yaml gates generic verbs; without the mapping they cannot resolve to tool names and would reach the backend ungated." $p $map) -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Same idea as assertProvider, for the LLM backend file. A missing file
+here is a straight render failure, not a silent gate bypass — but it
+should still fail loudly at render rather than 404 deep in a pod's logs.
+*/}}
+{{- define "platform-agent-stack.assertLlmProvider" -}}
+{{- $p := .Values.llmProvider -}}
+{{- $f := printf "llm-providers/%s.yaml" $p -}}
+{{- if not (.Files.Get $f) -}}
+{{- fail (printf "llmProvider=%q but %s is missing from the chart. Rename llm-providers/modelplane.yaml.example to modelplane.yaml, or add a file for your backend." $p $f) -}}
+{{- end -}}
+{{- end -}}

@@ -1,0 +1,12 @@
+{
+  "itsm": {
+    "command": "uvx",
+    "args": ["freshservice-mcp"],
+    "env": {
+      "FRESHSERVICE_DOMAIN": "polarpoint.freshservice.com",
+      "FRESHSERVICE_APIKEY": "${FRESHSERVICE_APIKEY}"
+    },
+    "_note": "Self-hosted community server (github.com/effytech/freshservice_mcp, MIT), run via uvx - stdio transport, not a hosted remote endpoint. Freshworks does have its own native MCP integration, but as of writing it's Beta/EAP-gated to selected Enterprise-plan customers (see developers.freshworks.com/docs/agentic-dev-tools/mcp-server/) - this community server works today without needing that program. FRESHSERVICE_APIKEY comes from Profile Settings -> API Settings in the Freshservice admin panel.",
+    "_todo_verify": "If/when Freshworks' own hosted MCP server is available on your plan, it likely follows the same OAuth pattern as Atlassian's (see jira-service-management.mcp.json) and this becomes a url/transport block instead of command/args. Confirm tool names against a live tools/list before trusting action-mappings/freshservice.yaml - see that file's header comment for a real, non-obvious finding about update_ticket."
+  }
+}

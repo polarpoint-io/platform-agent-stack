@@ -14,11 +14,15 @@ The chart reads both, selected by `itsmProvider` in `values.yaml`.
 
 ## Open items — resolve before this is used in anger
 
-- **Only Jira Service Management is implemented.** Adding ServiceNow or
-  Freshservice means writing both files for it — a provider definition
-  and an action mapping. Several community MCP servers exist for each,
-  with different install commands and credential handling. Treat any
-  provider you haven't run against a live server as a starting shape.
+- **Jira Service Management and Freshservice are implemented.** ServiceNow
+  is not yet. Freshservice uses the self-hosted community server
+  (github.com/effytech/freshservice_mcp) rather than Freshworks' own
+  hosted MCP integration, which is Beta/EAP-gated to selected
+  Enterprise-plan customers as of writing — see
+  `providers/freshservice.mcp.json` for the note and a path to switch if
+  that changes. Both providers here are a starting shape until run
+  against a live server — treat any provider you haven't verified that
+  way, including these two.
 - **Action mappings must not be guessed.** The generic verbs in
   [`../policy/risk-tiers.yaml`](../policy/risk-tiers.yaml) need mapping to
   whatever tool names your MCP server actually exposes. Connect first,
@@ -51,6 +55,23 @@ Both are commented out with this reasoning in the mapping file. Leaving a
 verb unmapped means it cannot execute at all, which is the safe state.
 Freshservice and ServiceNow expose narrower per-action tools and may not
 have this problem — it is a Jira modelling detail, not a general one.
+
+## What the Freshservice mapping does not map, and why
+
+Same problem as Jira, but wider: this server's ticket editing is a single
+`update_ticket(ticket_id, ticket_fields)` tool with no dedicated
+status-transition or assignment tool. `update_ticket_status` (tier 2),
+`close_ticket` (tier 3) and `assign_ticket` (tier 3) would all resolve to
+that one general-purpose editor, which can also rewrite summary,
+description, priority or any custom field. Mapping any one of the three
+grants everything the other two would have, plus more. All three stay
+unmapped — see the comment block in
+`action-mappings/freshservice.yaml` for the full reasoning.
+
+This contradicts this file's own earlier assumption that Freshservice and
+ServiceNow "expose narrower per-action tools and may not have this
+problem" — for the community `effytech/freshservice_mcp` server at least,
+it is not narrower than Jira's, it is coarser.
 
 ## Related
 

@@ -1,0 +1,10 @@
+# Modelplane — self-hosted inference, intended to run ALONGSIDE Foundry,
+# not to replace it. Renamed to modelplane.yaml when you're ready.
+#
+# TODO(verify): schema unconfirmed, same caveat as foundry.yaml.
+provider: modelplane
+type: openai-compatible
+endpoint: ${MODELPLANE_ENDPOINT}
+apiKey: ${MODELPLANE_API_KEY}
+models:
+  default: ${MODELPLANE_MODEL}

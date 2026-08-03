@@ -1,0 +1,75 @@
+# Generic policy verb  ->  the tool name this MCP server actually exposes.
+#
+# READ THIS BEFORE EDITING
+# The left column must match a verb in ../../policy/risk-tiers.yaml. A verb
+# here that appears in no tier falls to default_policy.unlisted_action
+# (tier_4_draft_only); scripts/validate-config.sh warns when that happens.
+#
+# The failure this file causes is silent: map a verb to the wrong tool and
+# the agent performs an action under the wrong tier's gating. Nothing errors.
+
+provider: freshservice
+
+# Tool names below are from github.com/effytech/freshservice_mcp (MIT,
+# self-hosted via `uvx freshservice-mcp`), read directly from its
+# src/freshservice_mcp/server.py @mcp.tool() definitions at the time this
+# was written - not a guess, but also not a promise about a future release.
+# Confirm with tools/list before trusting them.
+
+actions:
+  # tier 1 - read-only
+  search_tickets:       filter_tickets
+  get_ticket:           get_ticket_by_id
+
+  # Freshservice has its OWN native Solution Articles knowledge base - it
+  # is not Confluence-backed like Jira Service Management's. The two
+  # Confluence-named generic verbs are reused for their closest semantic
+  # equivalent (fetch a KB listing / fetch one KB article by id):
+  list_kb_articles:     get_list_of_solution_article
+  get_confluence_page:  get_solution_article
+  # No mapping for search_confluence: this server has no free-text KB
+  # search tool, only lookups by folder id / article id. Left unmapped -
+  # an unmapped verb cannot execute, which is the safe state.
+
+  # tier 2 - low-risk write, executes and notifies
+  add_ticket_comment:   create_ticket_note
+
+  # tier 3 - needs human approval before executing
+  create_ticket:        create_ticket
+
+  # ---------------------------------------------------------------------
+  # NOT MAPPED, deliberately - and worse here than in the Jira mapping
+  # this pattern is copied from. Read before adding them.
+  #
+  # This server's ticket editing is ONE tool: update_ticket(ticket_id,
+  # ticket_fields: dict). There is no dedicated status-transition tool and
+  # no dedicated assignment tool - status, priority, responder_id (the
+  # assignee) and every other ticket field all go through the same
+  # general-purpose editor. That means update_ticket_status (tier 2),
+  # close_ticket (tier 3) AND assign_ticket (tier 3) would all resolve to
+  # the exact same tool if mapped - worse than Jira, where at least
+  # assign_ticket (editJiraIssue) was a different tool from the
+  # status/close pair (transitionJiraIssue). Mapping any ONE of these
+  # three tier-2/3 verbs to update_ticket grants everything the other two
+  # would have granted, PLUS free-form editing of every other ticket
+  # field (summary, description, priority, custom fields). A tier-2
+  # auto-execute could silently perform a tier-3-equivalent reassignment.
+  #
+  # This directly contradicts this repo's own itsm-providers/README.md
+  # assumption ("Freshservice and ServiceNow expose narrower per-action
+  # tools and may not have this problem") - worth re-reading that note
+  # with this in mind. Until update_ticket is replaced by (or wrapped
+  # with) narrower per-field tools, all three stay unmapped and a human
+  # makes the change directly in Freshservice.
+  #
+  # update_ticket_status: update_ticket
+  # close_ticket:         update_ticket
+  # assign_ticket:        update_ticket
+  # ---------------------------------------------------------------------
+
+  # tier 4 - agent drafts, human performs. Deliberately unmapped, matching
+  # the Jira mapping's convention: grant_access / revoke_access /
+  # modify_identity have no entry by design, even though this server does
+  # expose agent/requester-group tools (update_agent,
+  # add_requester_to_group, etc.) that touch similar ground. An unmapped
+  # verb cannot execute at all, which is the safe state for tier 4.

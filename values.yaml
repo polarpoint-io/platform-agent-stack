@@ -1,7 +1,11 @@
 # Which ITSM backend to wire in. Must match a file under
 # itsm-providers/providers/ AND one under itsm-providers/action-mappings/.
 # The chart fails to render if either is missing.
-itsmProvider: jira-service-management
+itsmProvider: freshservice
+
+# Which LLM backend to wire in. Must match a file under llm-providers/
+# (rename the .example to enable it). The chart fails to render if missing.
+llmProvider: modelplane
 
 image:
   repository: ghcr.io/ruvnet/ruflo
@@ -29,15 +33,18 @@ externalSecrets:
     kind: ClusterSecretStore
   refreshInterval: 1h
   keys:
-    # Atlassian's hosted MCP server authenticates per-user over OAuth, so
-    # there is no API token to inject. These are only needed if you swap
-    # to self-hosted mcp-atlassian, which does take a token.
+    # effytech/freshservice_mcp (self-hosted, stdio) needs real credentials
+    # injected as env vars - unlike Atlassian's hosted MCP server (the
+    # jira-service-management default), which authenticates per-user over
+    # OAuth and needs none of these. If you switch itsmProvider back to
+    # jira-service-management, this block becomes unused unless you also
+    # swap to self-hosted mcp-atlassian.
     itsm:
       remoteKey: platform-agent-stack/itsm
-      properties: [JIRA_URL, JIRA_USERNAME, JIRA_API_TOKEN]
+      properties: [FRESHSERVICE_DOMAIN, FRESHSERVICE_APIKEY]
     llm:
       remoteKey: platform-agent-stack/llm
-      properties: [AZURE_FOUNDRY_ENDPOINT, AZURE_FOUNDRY_API_KEY, AZURE_FOUNDRY_DEPLOYMENT, AZURE_FOUNDRY_DEPLOYMENT_FAST]
+      properties: [MODELPLANE_ENDPOINT, MODELPLANE_API_KEY, MODELPLANE_MODEL]
     confluence:
       remoteKey: platform-agent-stack/confluence
       properties: [CONFLUENCE_BASE_URL, CONFLUENCE_USER, CONFLUENCE_API_TOKEN]

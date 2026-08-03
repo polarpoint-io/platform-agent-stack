@@ -1,5 +1,6 @@
 {{- include "platform-agent-stack.assertVersion" . }}
 {{- include "platform-agent-stack.assertProvider" . }}
+{{- include "platform-agent-stack.assertLlmProvider" . }}
 # The swarm topology and the risk policy, straight from the files in this
 # repo. Nothing is assembled on anyone's laptop — what git holds is what
 # the cluster runs, which is the point of putting this under ArgoCD.
@@ -16,4 +17,4 @@ data:
   action-mappings.yaml: |
 {{ .Files.Get (printf "itsm-providers/action-mappings/%s.yaml" .Values.itsmProvider) | indent 4 }}
   llm-provider.yaml: |
-{{ .Files.Get "llm-providers/foundry.yaml" | indent 4 }}
+{{ .Files.Get (printf "llm-providers/%s.yaml" .Values.llmProvider) | indent 4 }}
