@@ -16,13 +16,10 @@ contains:
     owns: "Which LLM backend agents call — Azure AI Foundry now, Modelplane later"
   - path: confluence-toolset/
     owns: "Read-only Confluence access via REST, for when Confluence MCP isn't available"
-  - path: Dockerfile
-    owns: "Builds ghcr.io/polarpoint-io/ruflo from the real npm ruflo package — no upstream image ever existed"
+  - path: bridge/
+    owns: "The MCP bridge itself — connects to the ITSM/runbook MCP servers, enforces risk-tiers.yaml, routes triage. Not a Ruflo image; see bridge/README.md"
 
 separate_repos:
-  - repo: ruflo-bridge
-    owns: "K8s/Helm/KEDA runtime for the Ruflo MCP bridge"
-    why: "Independently released Helm artifact with its own version stream"
   - repo: polarpoint-io/holmesgpt-runbook-mcp
     owns: "Already exists — runbook search/gap-detection/drafting/RCA for sre-investigator"
     why: "Pre-existing, not part of this breakout. runbook_draft is gated at tier_2"

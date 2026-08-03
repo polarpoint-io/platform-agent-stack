@@ -18,6 +18,18 @@ jobs:
       - name: Validate policy, mappings and swarm config
         run: ./charts/platform-agent-stack/scripts/validate-config.sh
 
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - working-directory: bridge
+        run: npm install --no-audit --no-fund
+      - working-directory: bridge
+        run: for f in src/*.js; do node --check "$f"; done
+
   chart:
     runs-on: ubuntu-latest
     steps:
@@ -29,7 +41,6 @@ jobs:
       - name: Guards must still refuse bad input
         run: |
           set -e
-          ! helm template pas charts/platform-agent-stack --set image.tag=3.16.2   2>/dev/null || { echo "::error::CVE floor guard did not fire"; exit 1; }
           ! helm template pas charts/platform-agent-stack --set image.tag=latest    2>/dev/null || { echo "::error::semver guard did not fire"; exit 1; }
           ! helm template pas charts/platform-agent-stack --set itsmProvider=nope   2>/dev/null || { echo "::error::provider guard did not fire"; exit 1; }
           echo "all guards fired"

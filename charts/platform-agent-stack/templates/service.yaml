@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "platform-agent-stack.fullname" . }}
+  labels: {{- include "platform-agent-stack.labels" . | nindent 4 }}
+spec:
+  {{- if ne .Values.service.type "ClusterIP" }}
+  {{- fail (printf "service.type is %q. The bridge has no authentication of its own; exposing it beyond the cluster makes every ITSM/runbook action reachable by anyone who can reach it. If you genuinely intend this, put an authenticating proxy in front and change this template deliberately." .Values.service.type) }}
+  {{- end }}
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector: {{- include "platform-agent-stack.selectorLabels" . | nindent 4 }}

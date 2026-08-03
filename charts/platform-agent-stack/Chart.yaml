@@ -1,12 +1,12 @@
 apiVersion: v2
 name: platform-agent-stack
-description: Agent topology, risk policy and pluggable ITSM/LLM/Confluence backends for a Ruflo-orchestrated SRE + ITSM agent swarm
+description: Agent topology, risk policy and pluggable ITSM/LLM/Confluence backends for a triage-router + itsm-support + HolmesGPT SRE/ITSM agent stack, fronted by a custom MCP bridge (bridge/)
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.2.0
+appVersion: "0.2.0"
 icon: https://raw.githubusercontent.com/polarpoint-io/images-icons-avatars/master/assets/img/polarpoint.png
 home: https://github.com/polarpoint-io/platform-agent-stack
-keywords: [polarpoint, agents, sre, itsm, ruflo, mcp]
+keywords: [polarpoint, agents, sre, itsm, mcp]
 maintainers:
   - name: bainss
     url: https://polarpoint-io.github.io/

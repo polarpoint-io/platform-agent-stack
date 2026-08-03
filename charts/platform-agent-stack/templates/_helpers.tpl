@@ -19,14 +19,18 @@ app.kubernetes.io/name: {{ include "platform-agent-stack.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
+{{/*
+This used to assert a Ruflo image floor (CVE-2026-59726). That doesn't
+apply anymore - bridge/ is our own code, built and versioned by this
+repo's own CI, not an upstream Ruflo image. Kept as a lighter hygiene
+check: still refuse a non-semver tag like "latest", since an
+unpredictable tag on a Deployment is a bad idea regardless of whose
+code it is.
+*/}}
 {{- define "platform-agent-stack.assertVersion" -}}
-{{- $min := "3.16.3" -}}
 {{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
 {{- if not (regexMatch "^[0-9]+\\.[0-9]+\\.[0-9]+" $tag) -}}
-{{- fail (printf "image.tag %q is not a plain semver. Pin an explicit version >= %s — CVE-2026-59726 (RufRoot, CVSS 10.0)." $tag $min) -}}
-{{- end -}}
-{{- if semverCompare (printf "< %s" $min) $tag -}}
-{{- fail (printf "image.tag %s is below %s — CVE-2026-59726 (RufRoot, CVSS 10.0): unauthenticated RCE in the MCP bridge. Refusing to render." $tag $min) -}}
+{{- fail (printf "image.tag %q is not a plain semver. Pin an explicit version, not \"latest\" - see .github/workflows/build-bridge-image.yml for how tags are cut." $tag) -}}
 {{- end -}}
 {{- end -}}
 

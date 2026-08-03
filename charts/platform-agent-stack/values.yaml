@@ -8,31 +8,44 @@ itsmProvider: freshservice
 llmProvider: modelplane
 
 image:
-  # ghcr.io/ruvnet/ruflo never existed (verified via authenticated GHCR
-  # registry API - not just anonymous-pull denial). Built in-house from
-  # the real npm package by this repo's Dockerfile +
-  # .github/workflows/build-ruflo-image.yml.
-  repository: ghcr.io/polarpoint-io/ruflo
-  # Same floor as ruflo-bridge — below 3.16.3 the MCP bridge is
-  # unauthenticated (CVE-2026-59726). Asserted at render time. 3.34.0 is
-  # the version installed when this image was last built.
-  tag: "3.34.0"
+  # bridge/ in this repo, not a Ruflo image - see bridge/README.md for
+  # why. Built and pushed by .github/workflows/build-bridge-image.yml.
+  repository: ghcr.io/polarpoint-io/platform-agent-bridge
+  tag: "0.1.0"
   pullPolicy: IfNotPresent
 
 replicaCount: 1
 
-# The bridge Service this swarm talks to. Deployed by the ruflo-bridge
-# chart, which ArgoCD syncs as a separate Application.
-bridge:
-  serviceName: ruflo-bridge
+service:
+  type: ClusterIP
   port: 3000
 
-# Port the real `ruflo start` command's own embedded MCP server listens on
-# inside this pod (separate from the bridge above - see deployment.yaml's
-# comment on the args for what `ruflo start` actually does vs. what
-# swarm.config.json assumes).
-mcp:
-  port: 3000
+# The bridge has no authentication of its own - this NetworkPolicy is
+# the real access control. Empty means deny-all, not allow-all: there's
+# no Slack app or ingress wired up yet (bridge/README.md), so there's
+# genuinely no legitimate caller to allow until one exists. Set this
+# deliberately once it does.
+networkPolicy:
+  enabled: true
+  allowedNamespaces: []
+  allowedPodLabels: {}
+
+# HolmesGPT's own Service (separate chart, separate release - see the
+# holmesgpt Application's own values.yaml for the exact name). Real
+# endpoint is POST {holmesUrl}/api/chat, confirmed against holmesgpt's
+# server.py, not assumed.
+holmesUrl: "http://holmes-non-prod-multitenant-holmes.holmesgpt.svc:80"
+
+# holmesgpt-runbook-mcp's Service, same URL Holmes itself is configured
+# with (see the holmesgpt Application's mcp_servers.runbook_mcp.config.url).
+holmesRunbookMcpUrl: "http://holmesgpt-runbook-mcp.holmesgpt.svc.cluster.local:8080/mcp"
+
+# Slack Incoming Webhook for tier_2/tier_3 notifications. Optional - if
+# unset, notifications just get logged instead of posted. Not treated as
+# a secret here (a webhook URL is a write-only capability token, lower
+# stakes than an API key) but move it to externalSecrets.keys if your
+# threat model disagrees.
+slackWebhookUrl: ""
 
 # External Secrets Operator. Nothing secret is committed to this repo;
 # the chart only names where to find it.
@@ -60,11 +73,6 @@ externalSecrets:
     confluence:
       remoteKey: platform-agent-stack/confluence
       properties: [CONFLUENCE_BASE_URL, CONFLUENCE_USER, CONFLUENCE_API_TOKEN]
-
-# Mongo-compatible state, provisioned by mongostate-crossplane. The claim
-# writes a Secret with this name into the release namespace.
-state:
-  connectionSecret: agent-swarm-state
 
 resources:
   requests: { cpu: 250m, memory: 512Mi }
