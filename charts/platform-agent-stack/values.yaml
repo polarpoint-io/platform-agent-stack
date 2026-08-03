@@ -8,10 +8,15 @@ itsmProvider: freshservice
 llmProvider: modelplane
 
 image:
-  repository: ghcr.io/ruvnet/ruflo
+  # ghcr.io/ruvnet/ruflo never existed (verified via authenticated GHCR
+  # registry API - not just anonymous-pull denial). Built in-house from
+  # the real npm package by this repo's Dockerfile +
+  # .github/workflows/build-ruflo-image.yml.
+  repository: ghcr.io/polarpoint-io/ruflo
   # Same floor as ruflo-bridge — below 3.16.3 the MCP bridge is
-  # unauthenticated (CVE-2026-59726). Asserted at render time.
-  tag: "3.30.2"
+  # unauthenticated (CVE-2026-59726). Asserted at render time. 3.34.0 is
+  # the version installed when this image was last built.
+  tag: "3.34.0"
   pullPolicy: IfNotPresent
 
 replicaCount: 1
@@ -20,6 +25,13 @@ replicaCount: 1
 # chart, which ArgoCD syncs as a separate Application.
 bridge:
   serviceName: ruflo-bridge
+  port: 3000
+
+# Port the real `ruflo start` command's own embedded MCP server listens on
+# inside this pod (separate from the bridge above - see deployment.yaml's
+# comment on the args for what `ruflo start` actually does vs. what
+# swarm.config.json assumes).
+mcp:
   port: 3000
 
 # External Secrets Operator. Nothing secret is committed to this repo;

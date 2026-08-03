@@ -2,12 +2,14 @@
 #
 # Schema matches releases/templates/children-applications.yaml: when
 # chart.path is set the source is treated as a git repo at that path.
-# This repo IS the chart — Chart.yaml sits at the root so .Files.Get can
-# read swarm/, policy/ and itsm-providers/.
+# The Helm chart lives under charts/platform-agent-stack/ (not repo root -
+# the root also holds the Dockerfile/CI that builds the Ruflo image). All
+# .Files.Get calls in the chart's templates are relative to that chart
+# directory, so swarm/, policy/, itsm-providers/ etc. moved there too.
 chart:
   name: platform-agent-stack
   url: git@github.com:polarpoint-io/platform-agent-stack.git
-  path: .
+  path: charts/platform-agent-stack
   targetRevision: main
   namespace: agents
 

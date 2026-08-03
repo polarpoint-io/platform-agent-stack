@@ -4,16 +4,20 @@ repo: platform-agent-stack
 owns: "Agent topology, risk policy and the pluggable backends, in one place"
 
 contains:
-  - path: swarm/
+  - path: charts/platform-agent-stack/
+    owns: "The Helm chart itself — Chart.yaml, templates/, values.yaml, and the config directories below it"
+  - path: charts/platform-agent-stack/swarm/
     owns: "Which agents exist, their toolsets, how they're wired — swarm.config.json"
-  - path: policy/
+  - path: charts/platform-agent-stack/policy/
     owns: "Risk-tiered action gating — what runs unattended vs. needs approval"
-  - path: itsm-providers/
+  - path: charts/platform-agent-stack/itsm-providers/
     owns: "Pluggable ITSM MCP backends and their action mappings"
-  - path: llm-providers/
+  - path: charts/platform-agent-stack/llm-providers/
     owns: "Which LLM backend agents call — Azure AI Foundry now, Modelplane later"
   - path: confluence-toolset/
     owns: "Read-only Confluence access via REST, for when Confluence MCP isn't available"
+  - path: Dockerfile
+    owns: "Builds ghcr.io/polarpoint-io/ruflo from the real npm ruflo package — no upstream image ever existed"
 
 separate_repos:
   - repo: ruflo-bridge

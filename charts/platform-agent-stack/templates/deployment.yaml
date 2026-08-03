@@ -20,7 +20,37 @@ spec:
         - name: swarm
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args: ["swarm", "start", "--config", "/config/swarm.config.json"]
+          # IMPORTANT - verified against the real `ruflo` CLI (npm package;
+          # see repo README/Dockerfile for why we build our own image). The
+          # previous args here (`swarm start --config <path>`) do not work:
+          # `swarm start` has no --config flag at all, and unconditionally
+          # requires -o/--objective (it's a one-shot task runner, not a
+          # persistent service). Below uses `ruflo start` instead - the real
+          # subcommand for a long-running orchestrator - with topology taken
+          # from swarm/swarm.config.json's own "topology" field.
+          #
+          # BIGGER GAP, not fixed here: swarm.config.json's custom agent
+          # list (triage-router/sre-investigator/itsm-support), toolsets,
+          # actionPolicy and actionMapping fields, and everything under
+          # policy/ and itsm-providers/, are this repo's own invented
+          # schema. The real `ruflo` binary has no concept of any of it -
+          # no flag or config key reads swarm.config.json's "agents" array,
+          # risk-tiers.yaml, or the freshservice action-mappings file. Ruflo
+          # only knows generic `agent spawn -t <type>`, `policy` (its own
+          # ADR-324 engine, unrelated file format), and `providers`
+          # (unrelated to itsm-providers/). Until custom code exists to
+          # actually read this repo's config and drive Ruflo's real APIs
+          # (agent spawn / MCP client / policy) accordingly, the container
+          # started here just runs a generic Ruflo orchestrator - it does
+          # NOT route ITSM tickets to Freshservice or wrap HolmesGPT per
+          # swarm.config.json. The ConfigMap files stay mounted at /config
+          # for whenever that integration work happens.
+          args:
+            - start
+            - --topology
+            - {{ (.Files.Get "swarm/swarm.config.json" | fromJson).topology | quote }}
+            - --port
+            - "{{ .Values.mcp.port | default 3000 }}"
           securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
           resources: {{- toYaml .Values.resources | nindent 12 }}
           env:
