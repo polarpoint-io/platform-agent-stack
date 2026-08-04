@@ -1,0 +1,29 @@
+# Copy to argocd-tooling-applications/releases/apps/platform/platform-agent-stack/non-prod.yaml
+#
+# Schema matches releases/templates/children-applications.yaml: when
+# chart.path is set the source is treated as a git repo at that path.
+# The Helm chart lives under charts/platform-agent-stack/ (not repo root -
+# the root also holds bridge/, the custom MCP bridge service). All
+# .Files.Get calls in the chart's templates are relative to that chart
+# directory, so swarm/, policy/, itsm-providers/ etc. live there too.
+#
+chart:
+  name: platform-agent-stack
+  url: git@github.com:polarpoint-io/platform-agent-stack.git
+  path: charts/platform-agent-stack
+  targetRevision: main
+  namespace: agents
+
+labels:
+  service: tooling
+  app: platform-agent-stack
+
+values: |
+  itsmProvider: jira-service-management
+
+  externalSecrets:
+    enabled: true
+    secretStoreRef:
+      # TODO(verify): point at your actual ClusterSecretStore.
+      name: polarpoint-secret-store
+      kind: ClusterSecretStore

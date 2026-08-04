@@ -28,13 +28,19 @@ networkPolicy:
 
 # HolmesGPT's Service. Endpoint called: POST {holmesUrl}/api/chat.
 #
-# Both URLs below are cluster-local, so this chart has to be deployed to
-# the SAME cluster as HolmesGPT - currently multitenant, via
-# argocd-foundational-applications' non-prod-multitenant descriptors.
-# Deployed anywhere else these resolve to nothing and the SRE lane dies
-# quietly: mcpBackends.connectAll() is best-effort, so runbook_mcp just
-# logs "fetch failed" and every runbook verb reports "not connected".
-# Point them at a routable address first if the two ever get split.
+# KNOWN BROKEN as deployed. Both URLs below are cluster-local DNS, and
+# both Services live on the multitenant cluster, but this chart is
+# deployed to tooling - so neither resolves. mcpBackends.connectAll() is
+# best-effort per backend, so this does not crash the bridge: runbook_mcp
+# logs "fetch failed" at boot, every runbook verb reports "not
+# connected", and sreAgent.js has nothing to relay to. The Freshservice
+# ITSM lane is unaffected.
+#
+# Not fixed by pointing these somewhere else - there is currently no
+# workload home for the multitenant cluster (foundational is baseline
+# only). Closing it needs either a routable address for both Services or
+# the two co-located, both of which land with the argocd-applications
+# repo consolidation.
 holmesUrl: "http://holmes-non-prod-multitenant-holmes.holmesgpt.svc:80"
 
 # holmesgpt-runbook-mcp's Service.
