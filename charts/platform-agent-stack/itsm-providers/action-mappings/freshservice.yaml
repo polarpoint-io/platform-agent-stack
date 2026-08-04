@@ -14,7 +14,7 @@ provider: freshservice
 # self-hosted via `uvx freshservice-mcp`), originally read from its
 # src/freshservice_mcp/server.py @mcp.tool() definitions.
 #
-# VERIFIED 2026-08-04 against a live tools/list from version 1.0.0 (74
+# VERIFIED 2026-08-04 against a live tools/list from version 1.0.0 (59
 # tools): all 6 mappings below resolve to tools that exist. Re-check after
 # any version bump with:
 #     python3 ../../scripts/list-provider-tools.py freshservice
