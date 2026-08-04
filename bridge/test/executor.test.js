@@ -182,3 +182,32 @@ test("a declared error on approve keeps the approval pending", async () => {
   );
   assert.equal(store.size, 1, "a success-shaped failure must not consume the approval");
 });
+
+test("the JSON error shape this server also uses is caught", async () => {
+  // Its KB tools don't return a bare "Error:" string - they return a
+  // serialised object: {"error": "Failed to fetch solution article: 404"}.
+  const pattern = /^(Error\b|\{\s*"error":)/;
+  const jsonError = {
+    content: [{ type: "text", text: '{\n  "error": "Failed to fetch solution article: 404 Not Found"\n}' }],
+    isError: false,
+  };
+  const { executor } = harnessWithCheck(jsonError, pattern);
+  await assert.rejects(
+    () => executor.execute("search_tickets", {}),
+    (e) => e instanceof ToolCallError && /Failed to fetch/.test(e.message)
+  );
+});
+
+test("the JSON error pattern does not fire on a real payload", async () => {
+  const pattern = /^(Error\b|\{\s*"error":)/;
+  // A genuine result, and one that merely CONTAINS an error-ish key
+  // further in - neither may be treated as a failure.
+  for (const text of [
+    '{\n  "tickets": [{"subject": "Error: disk full"}],\n  "total": 1\n}',
+    '{\n  "ticket": {"id": 3, "custom_fields": {"error": null}}\n}',
+  ]) {
+    const { executor } = harnessWithCheck({ content: [{ type: "text", text }], isError: false }, pattern);
+    const r = await executor.execute("search_tickets", {});
+    assert.equal(r.action, "execute", `must not fire on: ${text.slice(0, 40)}`);
+  }
+});
