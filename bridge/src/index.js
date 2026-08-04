@@ -49,7 +49,7 @@ async function main() {
         return res.json({ lane, ...result });
       }
       if (lane === "itsm_ticket") {
-        const result = await handleItsmRequest({ llmProvider: config.llmProvider, actionMappings: config.actionMappings, executor, text });
+        const result = await handleItsmRequest({ llmProvider: config.llmProvider, actionMappings: config.actionMappings, executor, policy, backends, text });
         return res.json({ lane, ...result });
       }
       return res.json({ lane: "unknown", reply: "Could not classify this request as an infra incident or an ITSM ticket." });
@@ -74,12 +74,25 @@ async function main() {
 
   app.get("/approvals", async (_req, res) => res.json(await executor.listPending()));
 
+  // 404 only means "no such approval". A backend that rejected the call
+  // is a 502 and the approval stays pending - previously both came back
+  // as 404, and a tool-level rejection came back as 200 with the error
+  // buried in result.content, so an approver could not tell the
+  // difference between done and not done.
   app.post("/approvals/:id/approve", async (req, res) => {
     try {
       const result = await executor.approve(req.params.id);
       res.json({ result });
     } catch (err) {
-      res.status(404).json({ error: err.message });
+      if (err.code === "NO_SUCH_APPROVAL") {
+        return res.status(404).json({ error: err.message });
+      }
+      console.error(`[approve] ${err.stack}`);
+      res.status(502).json({
+        error: err.message,
+        approvalId: req.params.id,
+        stillPending: Boolean(err.stillPending),
+      });
     }
   });
 

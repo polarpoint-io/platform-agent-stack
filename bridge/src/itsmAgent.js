@@ -9,26 +9,58 @@ import { chatCompletion } from "./llm.js";
 // One JSON-schema function per verb this ITSM provider actually maps -
 // built from action-mappings.yaml, not hardcoded, so a provider swap
 // changes the available verbs automatically.
-function buildToolSchemas(actionMappings) {
+//
+// The PARAMETERS come from the backend tool's own inputSchema, fetched
+// live at connect time (mcpBackends.js keeps tools[].inputSchema). They
+// used to be a hardcoded {ticket_id, text} pair applied to every verb,
+// which no real tool accepts: Freshservice's create_ticket requires
+// subject/description/source/priority/status, so the model dutifully
+// produced {text: "..."} and the call could never succeed. Nothing
+// caught it, because args are not validated when an action is parked -
+// a tier_3 sat in the approval queue looking legitimate and only failed
+// after a human approved it.
+//
+// A verb whose schema cannot be resolved is OMITTED rather than
+// advertised with a guessed one. If the backend is not connected the
+// call would fail anyway, and guessing is what caused this.
+export function buildToolSchemas(actionMappings, policy, backends) {
   const verbs = Object.keys(actionMappings?.actions || {});
-  return verbs.map((verb) => ({
-    type: "function",
-    function: {
-      name: verb,
-      description: `ITSM action: ${verb}`,
-      parameters: {
-        type: "object",
-        properties: {
-          ticket_id: { type: "string", description: "Ticket ID, if this action targets a specific ticket" },
-          text: { type: "string", description: "Free-text content for this action (comment body, ticket description, search query, etc.)" },
-        },
+  const schemas = [];
+  for (const verb of verbs) {
+    const resolution = policy?.resolve?.(verb);
+    if (!resolution) continue;
+    const backend = backends?.get?.(resolution.backend);
+    const tool = backend?.tools?.find((t) => t.name === resolution.tool);
+    if (!tool?.inputSchema) {
+      console.warn(
+        `[itsm-support] no live schema for "${verb}" -> ${resolution.backend}.${resolution.tool} ` +
+        `(backend connected: ${Boolean(backend?.ready)}) - omitting it from this turn's tool list ` +
+        `rather than offering the model a schema the tool will reject.`
+      );
+      continue;
+    }
+    schemas.push({
+      type: "function",
+      function: {
+        name: verb,
+        // The tool's own description carries the argument semantics the
+        // model needs; the generic verb name alone does not.
+        description: tool.description || `ITSM action: ${verb}`,
+        parameters: tool.inputSchema,
       },
-    },
-  }));
+    });
+  }
+  return schemas;
 }
 
-export async function handleItsmRequest({ llmProvider, actionMappings, executor, text }) {
-  const tools = buildToolSchemas(actionMappings);
+export async function handleItsmRequest({ llmProvider, actionMappings, executor, policy, backends, text }) {
+  const tools = buildToolSchemas(actionMappings, policy, backends);
+  if (!tools.length) {
+    return {
+      reply: "No ITSM action is available right now - the backend's tool schemas could not be resolved. See the bridge log.",
+      actions: [],
+    };
+  }
   const message = await chatCompletion(llmProvider, {
     messages: [
       {

@@ -71,14 +71,33 @@ the LLM classifier in `/triage` - it's the fastest way to see a real
 tier decision, and for tier_1/tier_2 it actually calls the real backend
 (Holmes or the ITSM MCP server), not a mock.
 
-Port-forward to the pod first (run this yourself - this environment has
-no direct kubectl access):
+Easiest is to skip the port-forward and call the bridge from inside its
+own pod - the NetworkPolicy is deny-all (`ingress: []`), so a separate
+debug pod cannot reach it, and exec'ing in is the only path that isn't
+blocked by design:
+
+```sh
+POD=$(kubectl -n agents get pod -l app.kubernetes.io/name=platform-agent-stack -o jsonpath='{.items[0].metadata.name}')
+kubectl -n agents exec $POD -- wget -qO- http://127.0.0.1:3000/status
+```
+
+Two things that will waste your time otherwise:
+
+- **Use `127.0.0.1`, not `localhost`.** busybox resolves `localhost` to
+  `::1` first and the bridge listens on IPv4 only, so `localhost:3000`
+  gives "Connection refused" from a pod that is working fine.
+- **`wget -q` throws away the body on a non-2xx.** Every error response
+  here is JSON with an `error` field, and you will see none of it. Use
+  `kubectl exec $POD -- node -e '...fetch...'` when you need to read a
+  failure, which is most of the time.
+
+If you would rather port-forward:
 
 ```sh
 kubectl port-forward -n agents svc/platform-agent-stack-non-prod-platform-agent-stack 3000:3000
 ```
 
-Then, in another shell:
+Then, in another shell (`localhost` is fine from outside the pod):
 
 ```sh
 # what's connected, and which ITSM provider is active
@@ -142,7 +161,18 @@ curl -s -X POST localhost:3000/triage   -H 'content-type: application/json'   -d
   remaining piece.
 - **`itsm-support`'s tool-calling is single-turn.** One completion picks
   zero-or-one action and calls it. It doesn't loop (call a tool, look at
-  the result, decide whether to call another).
+  the result, decide whether to call another). Because of that it also
+  cannot recover from a rejected call - it sees the rejection only as a
+  thrown error at the HTTP layer, not as something to retry with better
+  arguments.
+
+- **Nothing validates arguments at park time.** `executor.execute()`
+  gates the VERB, not the payload. A tier_3 whose arguments the backend
+  will reject still parks, still notifies, and still sits in the queue
+  looking legitimate; it fails when a human approves it. Since v0.2.2
+  that failure is at least loud - the approval survives and the endpoint
+  returns 502 rather than 200 - but validating against the tool's
+  inputSchema before parking would be better than reporting it after.
 - **`confluence-read`** has no backend — `../confluence-toolset/` is
   still a placeholder. `search_confluence` and `get_confluence_page`
   will resolve to "blocked, no mapping" until that lands.
