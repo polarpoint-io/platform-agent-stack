@@ -9,6 +9,7 @@ import { loadConfig } from "./config.js";
 import { Policy } from "./policy.js";
 import { BackendRegistry } from "./mcpBackends.js";
 import { createExecutor } from "./executor.js";
+import { createApprovalsStore } from "./approvalsStore.js";
 import { notifySlack } from "./notify.js";
 import { classify } from "./llm.js";
 import { handleInfraRequest } from "./sreAgent.js";
@@ -19,19 +20,20 @@ async function main() {
   const policy = new Policy({ riskTiers: config.riskTiers, actionMappings: config.actionMappings });
   const backends = new BackendRegistry();
   await backends.connectAll({ mcpServers: config.mcpServers, holmesRunbookMcpUrl: config.holmesRunbookMcpUrl });
-  const executor = createExecutor({ policy, backends, slackWebhookUrl: config.slackWebhookUrl, notifySlack });
+  const approvalsStore = createApprovalsStore(config.mongoUri);
+  const executor = createExecutor({ policy, backends, slackWebhookUrl: config.slackWebhookUrl, notifySlack, approvalsStore });
 
   const app = express();
   app.use(express.json({ limit: "1mb" }));
 
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
-  app.get("/status", (_req, res) => {
+  app.get("/status", async (_req, res) => {
     res.json({
       agents: (config.swarm.agents || []).map((a) => a.id),
       backends: backends.status(),
       itsmProvider: config.actionMappings?.provider || null,
-      pendingApprovals: executor.listPending(),
+      pendingApprovals: await executor.listPending(),
     });
   });
 
@@ -70,7 +72,7 @@ async function main() {
     }
   });
 
-  app.get("/approvals", (_req, res) => res.json(executor.listPending()));
+  app.get("/approvals", async (_req, res) => res.json(await executor.listPending()));
 
   app.post("/approvals/:id/approve", async (req, res) => {
     try {

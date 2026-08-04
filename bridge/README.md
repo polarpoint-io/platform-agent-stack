@@ -17,6 +17,8 @@ src/
 ├── executor.js           the one place every tool call passes through: policy.decide()
 │                          first, then act — tier_1 silent, tier_2 execute+notify,
 │                          tier_3 park pending approval, tier_4 never executes
+├── approvalsStore.js       where parked tier_3 approvals live — in-memory, or
+│                            MongoDB-backed when MONGO_URI is set
 ├── llm.js                 talks to Anthropic (native Messages API) or an
 │                           openai-compatible provider, for classify() and
 │                           itsm-support's tool-calling
@@ -148,5 +150,9 @@ curl -s -X POST localhost:3000/triage   -H 'content-type: application/json'   -d
   from `sre-investigator`'s toolset in `swarm.config.json` aren't
   connected by this bridge — Holmes already has its own toolsets for
   these, so `sreAgent.js` relays to Holmes instead.
-- **Pending approvals are in-memory** — they don't survive a pod
-  restart.
+- **Pending approvals are in-memory by default** — lost on a pod
+  restart, and only visible to the pod that created them. Set
+  `mongoState.enabled: true` in the chart to back this with
+  mongostate-crossplane's connection secret instead (see
+  `approvalsStore.js` and that repo's README) — off by default because
+  it needs a one-time cross-cluster RBAC/token setup, documented there.

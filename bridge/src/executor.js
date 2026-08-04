@@ -4,9 +4,7 @@
 
 import { randomUUID } from "node:crypto";
 
-export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack }) {
-  const pendingApprovals = new Map();
-
+export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack, approvalsStore }) {
   async function execute(verb, args, context = {}) {
     const decision = policy.decide(verb);
 
@@ -22,7 +20,7 @@ export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack 
 
     if (decision.action === "park") {
       const id = randomUUID();
-      pendingApprovals.set(id, { verb, args, decision, context, createdAt: new Date().toISOString() });
+      await approvalsStore.set(id, { verb, args, decision, context, createdAt: new Date().toISOString() });
       const note = `[approval needed] "${verb}"${context.summary ? ` - ${context.summary}` : ""} is waiting for approval. Approve: POST /approvals/${id}/approve`;
       await notifySlack(slackWebhookUrl, note);
       return { ...decision, result: null, approvalId: id, note };
@@ -38,18 +36,18 @@ export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack 
   }
 
   async function approve(id) {
-    const pending = pendingApprovals.get(id);
+    const pending = await approvalsStore.get(id);
     if (!pending) {
       throw new Error(`no pending approval with id ${id}`);
     }
-    pendingApprovals.delete(id);
+    await approvalsStore.delete(id);
     const result = await backends.callTool(pending.decision.backend, pending.decision.tool, pending.args);
     await notifySlack(slackWebhookUrl, `[approved & executed] "${pending.verb}"${pending.context.summary ? ` - ${pending.context.summary}` : ""}`);
     return result;
   }
 
-  function listPending() {
-    return [...pendingApprovals.entries()].map(([id, p]) => ({ id, verb: p.verb, args: p.args, createdAt: p.createdAt }));
+  async function listPending() {
+    return approvalsStore.list();
   }
 
   return { execute, approve, listPending };

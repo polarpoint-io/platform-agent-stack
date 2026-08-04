@@ -39,6 +39,11 @@ spec:
             - secretRef:
                 name: {{ include "platform-agent-stack.fullname" $ }}-{{ $name }}
             {{- end }}
+            {{- if .Values.mongoState.enabled }}
+            - secretRef:
+                name: {{ include "platform-agent-stack.fullname" . }}-mongo
+                optional: true
+            {{- end }}
           securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
           resources: {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

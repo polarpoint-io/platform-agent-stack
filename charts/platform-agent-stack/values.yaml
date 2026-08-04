@@ -74,3 +74,32 @@ securityContext:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Optional: durable state for the bridge's pending tier-3 approvals,
+# provisioned by mongostate-crossplane's MongoState claim. Crossplane
+# only runs on the controller cluster, so this is read cross-cluster via
+# a dedicated ClusterSecretStore this chart creates (the one cluster-
+# scoped resource in an otherwise namespaced chart - see
+# templates/clustersecretstore-controller.yaml). Off by default: the
+# bridge falls back to in-memory approvals (see bridge/src/approvalsStore.js)
+# when MONGO_URI is unset.
+mongoState:
+  enabled: false
+  # Controller's API server, reachable from this cluster.
+  controllerApiServer: "https://192.168.11.70:6443"
+  # base64 CA bundle for controllerApiServer. Get it from controller:
+  #   kubectl get secret tooling-mongostate-reader-token -n crossplane-system -o jsonpath='{.data.ca\.crt}'
+  controllerCaBundle: ""
+  # Secret on THIS cluster holding the token minted for controller's
+  # tooling-mongostate-reader ServiceAccount (mongostate-crossplane's
+  # manifests/rbac-tooling-reader.yaml). Seeded manually - same pattern
+  # as every other credential in this chart, just sourced from a
+  # different cluster's kubectl instead of a SaaS provider:
+  #   kubectl get secret tooling-mongostate-reader-token -n crossplane-system -o jsonpath='{.data.token}' | base64 -d
+  #   (on the TOOLING cluster) kubectl create secret generic controller-mongostate-reader-token -n agents --from-literal=token=<pasted value>
+  tokenSecretName: controller-mongostate-reader-token
+  # The MongoState claim's connection secret - name and namespace on
+  # controller (writeConnectionSecretToRef.name in mongostate-crossplane's
+  # examples/claim.yaml; namespace is that repo's writeConnectionSecretsToNamespace).
+  remoteSecretName: agent-swarm-state
+  remoteSecretNamespace: crossplane-system
