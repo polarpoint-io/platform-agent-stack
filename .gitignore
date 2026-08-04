@@ -5,3 +5,4 @@
 secrets/
 stack.env
 .mcp.json.bak.*
+node_modules/

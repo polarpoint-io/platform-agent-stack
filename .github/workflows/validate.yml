@@ -29,6 +29,9 @@ jobs:
         run: npm install --no-audit --no-fund
       - working-directory: bridge
         run: for f in src/*.js; do node --check "$f"; done
+      - name: Policy tests (real risk-tiers.yaml + action-mappings, both providers)
+        working-directory: bridge
+        run: node --test test/*.test.js
 
   chart:
     runs-on: ubuntu-latest
