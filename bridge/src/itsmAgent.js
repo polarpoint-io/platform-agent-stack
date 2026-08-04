@@ -39,13 +39,22 @@ export function buildToolSchemas(actionMappings, policy, backends) {
       );
       continue;
     }
+    // Optional per-verb hint from action-mappings.yaml, for tools whose
+    // own schema understates what the API actually requires - e.g.
+    // Freshservice's create_ticket marks email optional but rejects the
+    // call without it. Appended to, never replacing, the tool description.
+    const hint = actionMappings?.argument_hints?.[verb];
+    const description = [tool.description || `ITSM action: ${verb}`, hint]
+      .filter(Boolean)
+      .join("\n\n");
+
     schemas.push({
       type: "function",
       function: {
         name: verb,
         // The tool's own description carries the argument semantics the
         // model needs; the generic verb name alone does not.
-        description: tool.description || `ITSM action: ${verb}`,
+        description,
         parameters: tool.inputSchema,
       },
     });

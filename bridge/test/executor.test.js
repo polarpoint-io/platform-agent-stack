@@ -115,3 +115,70 @@ test("parking never calls the backend", async () => {
   await executor.execute("create_ticket", { subject: "x" });
   assert.equal(called, false, "tier_3 must not reach the backend before approval");
 });
+
+// --- provider-declared "success-shaped error" detection ---------------
+// freshservice-mcp returns failures with isError:false and the message as
+// plain text. The pattern is declared per provider; these lock in both
+// that it fires and, more importantly, that it does NOT over-fire.
+
+function harnessWithCheck(toolResult, pattern) {
+  const store = new Map();
+  const executor = createExecutor({
+    policy: new Policy({ riskTiers, actionMappings }),
+    backends: { callTool: async () => toolResult },
+    slackWebhookUrl: "",
+    notifySlack: async () => {},
+    approvalsStore: {
+      set: async (id, v) => void store.set(id, v),
+      get: async (id) => store.get(id),
+      delete: async (id) => void store.delete(id),
+      list: async () => [...store.values()],
+    },
+    resultChecks: pattern ? { itsm: pattern } : {},
+  });
+  return { executor, store };
+}
+
+const successShapedError = {
+  content: [{ type: "text", text: "Error: Either email or requester_id must be provided" }],
+  structuredContent: { result: "Error: Either email or requester_id must be provided" },
+  isError: false,
+};
+
+test("a declared success-shaped error is treated as a failure", async () => {
+  const { executor } = harnessWithCheck(successShapedError, /^Error\b/);
+  await assert.rejects(
+    () => executor.execute("search_tickets", {}),
+    (e) => e instanceof ToolCallError && /email or requester_id/.test(e.message)
+  );
+});
+
+test("without a declared pattern the same result passes through", async () => {
+  const { executor } = harnessWithCheck(successShapedError, null);
+  const r = await executor.execute("search_tickets", {});
+  assert.equal(r.action, "execute", "servers without the quirk must be unaffected");
+});
+
+test("the pattern never fires on structured output", async () => {
+  // The exact false positive that would be worse than the bug: a real
+  // result that merely CONTAINS matching text.
+  const realResult = {
+    content: [{ type: "text", text: '{"tickets":[{"subject":"Error: disk full on node 3"}],"total":1}' }],
+    structuredContent: { result: { tickets: [{ subject: "Error: disk full on node 3" }], total: 1 } },
+    isError: false,
+  };
+  const { executor } = harnessWithCheck(realResult, /^Error\b/);
+  const r = await executor.execute("search_tickets", {});
+  assert.equal(r.action, "execute");
+  assert.equal(r.result.structuredContent.result.total, 1);
+});
+
+test("a declared error on approve keeps the approval pending", async () => {
+  const { executor, store } = harnessWithCheck(successShapedError, /^Error\b/);
+  const parked = await executor.execute("create_ticket", { subject: "x" }, { summary: "t" });
+  await assert.rejects(
+    () => executor.approve(parked.approvalId),
+    (e) => e.stillPending === true
+  );
+  assert.equal(store.size, 1, "a success-shaped failure must not consume the approval");
+});

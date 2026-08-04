@@ -10,7 +10,7 @@ llmProvider: anthropic
 image:
   # Built and pushed by .github/workflows/build-bridge-image.yml from bridge/.
   repository: ghcr.io/polarpoint-io/platform-agent-bridge
-  tag: "0.2.2"
+  tag: "0.2.3"
   pullPolicy: IfNotPresent
 
 replicaCount: 1

@@ -44,6 +44,27 @@ actions:
   # tier 3 - needs human approval before executing
   create_ticket:        create_ticket
 
+# Appended to the tool description itsm-support shows the model, for verbs
+# whose real requirements the tool's own inputSchema understates. Optional,
+# and read only by bridge/src/itsmAgent.js - policy.js ignores this block
+# entirely, so nothing here can affect a tier decision.
+argument_hints:
+  # create_ticket's schema lists required: [subject, description, source,
+  # priority, status] and marks email/requester_id optional. The API
+  # rejects the call without one of them. Observed 2026-08-04: the model
+  # supplied all five "required" fields, the call was approved by a human,
+  # and Freshservice returned "Error: Either email or requester_id must be
+  # provided" - as a SUCCESSFUL result, so nothing surfaced it. The
+  # resultIsErrorWhen pattern in providers/freshservice.mcp.json now makes
+  # that failure loud; this hint is what stops it happening in the first
+  # place.
+  create_ticket: >-
+    You MUST also supply either email (the requester's email address) or
+    requester_id, even though the schema marks both optional - the API
+    rejects the request without one. source, priority and status are
+    integers: source 2 = Portal, priority 1 = Low through 4 = Urgent,
+    status 2 = Open.
+
   # ---------------------------------------------------------------------
   # NOT MAPPED, deliberately - and worse here than in the Jira mapping
   # this pattern is copied from. Read before adding them.

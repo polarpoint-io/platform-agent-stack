@@ -24,12 +24,40 @@ export class ToolCallError extends Error {
   }
 }
 
-function assertToolOk(backend, tool, result) {
-  if (result?.isError) throw new ToolCallError(backend, tool, result);
+// Some servers don't set isError at all - they catch their own failure
+// and hand it back as an ordinary successful result whose text happens
+// to be an error message. freshservice-mcp does exactly this:
+//   {content:[{type:"text",text:"Error: Either email or requester_id
+//    must be provided"}], isError:false}
+// Nothing generic can spot that reliably, so the pattern is DECLARED per
+// provider as resultIsErrorWhen in itsm-providers/providers/*.mcp.json
+// rather than guessed globally - a server without the quirk is untouched.
+//
+// Deliberately narrow: it only applies when the whole result is a bare
+// string. A false positive here is worse than the bug, because it would
+// report a SUCCEEDED action as failed and leave it in the approval queue,
+// inviting a retry that executes it twice.
+function resultIsDeclaredError(result, pattern) {
+  if (!pattern) return false;
+  const structured = result?.structuredContent?.result;
+  const text = typeof structured === "string"
+    ? structured
+    : (result?.content?.length === 1 && result.content[0]?.type === "text"
+        ? result.content[0].text
+        : null);
+  return typeof text === "string" && pattern.test(text);
+}
+
+function assertToolOk(backend, tool, result, pattern) {
+  if (result?.isError || resultIsDeclaredError(result, pattern)) {
+    throw new ToolCallError(backend, tool, result);
+  }
   return result;
 }
 
-export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack, approvalsStore }) {
+// resultChecks: { [backendName]: RegExp } - see config.js, which reads
+// resultIsErrorWhen out of the merged .mcp.json.
+export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack, approvalsStore, resultChecks = {} }) {
   async function execute(verb, args, context = {}) {
     const decision = policy.decide(verb);
 
@@ -55,7 +83,8 @@ export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack,
     const result = assertToolOk(
       decision.backend,
       decision.tool,
-      await backends.callTool(decision.backend, decision.tool, args)
+      await backends.callTool(decision.backend, decision.tool, args),
+      resultChecks[decision.backend]
     );
     if (decision.notify) {
       const note = `[executed] "${verb}" -> ${decision.backend}.${decision.tool}${context.summary ? ` - ${context.summary}` : ""}`;
@@ -82,7 +111,8 @@ export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack,
       result = assertToolOk(
         pending.decision.backend,
         pending.decision.tool,
-        await backends.callTool(pending.decision.backend, pending.decision.tool, pending.args)
+        await backends.callTool(pending.decision.backend, pending.decision.tool, pending.args),
+        resultChecks[pending.decision.backend]
       );
     } catch (err) {
       await notifySlack(

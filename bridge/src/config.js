@@ -47,12 +47,27 @@ export function loadConfig() {
   const llmProvider = substituteEnv(readYaml(`${CONFIG_DIR}/llm-provider.yaml`));
   const mcp = substituteEnv(readJson(MCP_JSON_PATH));
 
+  // Per-backend "this server reports failure as a successful result"
+  // patterns, declared in itsm-providers/providers/<name>.mcp.json as
+  // resultIsErrorWhen. Compiled once here; executor.js applies them.
+  // Kept out of the generic path deliberately - see executor.js.
+  const resultChecks = {};
+  for (const [name, def] of Object.entries(mcp.mcpServers || {})) {
+    if (!def?.resultIsErrorWhen) continue;
+    try {
+      resultChecks[name] = new RegExp(def.resultIsErrorWhen);
+    } catch (err) {
+      console.error(`[config] ignoring invalid resultIsErrorWhen for "${name}": ${err.message}`);
+    }
+  }
+
   return {
     swarm,
     riskTiers,
     actionMappings,
     llmProvider,
     mcpServers: mcp.mcpServers || {},
+    resultChecks,
     holmesUrl: process.env.HOLMES_URL,
     holmesRunbookMcpUrl: process.env.HOLMES_RUNBOOK_MCP_URL,
     slackWebhookUrl: process.env.SLACK_WEBHOOK_URL || "",

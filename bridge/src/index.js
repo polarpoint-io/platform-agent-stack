@@ -21,7 +21,7 @@ async function main() {
   const backends = new BackendRegistry();
   await backends.connectAll({ mcpServers: config.mcpServers, holmesRunbookMcpUrl: config.holmesRunbookMcpUrl });
   const approvalsStore = createApprovalsStore(config.mongoUri);
-  const executor = createExecutor({ policy, backends, slackWebhookUrl: config.slackWebhookUrl, notifySlack, approvalsStore });
+  const executor = createExecutor({ policy, backends, slackWebhookUrl: config.slackWebhookUrl, notifySlack, approvalsStore, resultChecks: config.resultChecks });
 
   const app = express();
   app.use(express.json({ limit: "1mb" }));

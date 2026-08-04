@@ -2,6 +2,8 @@
   "itsm": {
     "command": "uvx",
     "args": ["--with", "mcp<2", "freshservice-mcp"],
+    "resultIsErrorWhen": "^Error\\b",
+    "_resultIsErrorWhen_note": "This server catches its own failures and returns them as SUCCESSFUL tool results - isError is false and the message arrives as ordinary text, e.g. {\"content\":[{\"type\":\"text\",\"text\":\"Error: Either email or requester_id must be provided\"}],\"isError\":false}. Without this pattern executor.js believes it, so a human can approve a tier_3, get HTTP 200, and have nothing happen - observed doing exactly that on 2026-08-04. The regex is applied ONLY when the entire result is a bare string (see resultIsDeclaredError in executor.js), never to structured output, because a false positive is worse than the bug: it would report a completed action as failed and leave it in the approval queue for a retry that executes it twice. Remove this if upstream starts setting isError properly.",
     "_pin": "freshservice-mcp 1.0.0 declares 'mcp[cli]>=1.3.0' with no upper bound, so uvx resolves mcp 2.0.0, which removed mcp.server.fastmcp. The server then dies at import with ModuleNotFoundError before serving anything, and mcpBackends.js reports it as a generic 'Connection closed'. Pinning below 2 resolves mcp 1.29.0 and the server starts. This is a fresh resolve on every pod start, so it will break again the moment any other unbounded dependency of theirs cuts a major - if this backend stops connecting after a restart with no change on our side, check the log for an import error before anything else. Drop the pin once upstream bounds it.",
     "env": {
       "FRESHSERVICE_DOMAIN": "polarpoint.freshservice.com",
