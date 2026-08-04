@@ -1,9 +1,6 @@
-// HolmesGPT stays outside this bridge entirely - its own chart, its own
-// cluster DNS name, its own release cadence (see README "How it works").
-// This is the one HTTP call the sre-investigator path makes. Endpoint
-// and request/response shape confirmed against the real holmesgpt
-// server source (server.py: POST /api/chat, ChatRequest.ask,
-// ChatResponse.analysis) - not assumed from the chart comment alone.
+// The one HTTP call the sre-investigator path makes to HolmesGPT.
+// Endpoint: POST /api/chat, request field ChatRequest.ask, response
+// field ChatResponse.analysis.
 
 export async function askHolmes(holmesUrl, question) {
   if (!holmesUrl) {

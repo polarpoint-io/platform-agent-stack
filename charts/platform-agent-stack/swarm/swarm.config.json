@@ -36,5 +36,5 @@
       "notes": "ITSM backend and risk policy live in this same repo (../itsm-providers, ../policy), so a policy change and the mapping change it depends on are one commit and one review. Confluence via direct REST read, for environments where Confluence MCP isn't available or wanted."
     }
   ],
-  "_layout": "swarm/, policy/, itsm-providers/, llm-providers/ and confluence-toolset/ are directories in this repo; paths below are relative to this file. ruflo-bridge and mongostate-crossplane are separate repos, checked out alongside."
+  "_layout": "swarm/, policy/, itsm-providers/, llm-providers/ and confluence-toolset/ are directories in this repo; paths below are relative to this file. mongostate-crossplane is a separate repo, checked out alongside."
 }

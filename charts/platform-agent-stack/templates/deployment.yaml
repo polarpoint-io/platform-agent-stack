@@ -20,14 +20,6 @@ spec:
         - name: bridge
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          # bridge/ in this repo - custom code, not a Ruflo image. See
-          # bridge/README.md for exactly what was checked in the real
-          # `ruflo` npm package before concluding it couldn't do this
-          # (no config-driven MCP server registration, no risk-tier
-          # gating anywhere in its CLI or its own bundled mcp-bridge).
-          # This replaces both the old ruflo-image "swarm" container
-          # that used to run here and the separate ruflo-bridge
-          # repo/Application (retired - see that repo's README).
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}

@@ -1,13 +1,8 @@
 // Connects to whatever MCP servers this deployment has been told about -
 // the ITSM provider (+ anything else in .mcp.json, best-effort) over
 // stdio, and holmesgpt-runbook-mcp over streamable-http - and gives the
-// rest of the app one place to call a tool by {backend, tool}.
-//
-// This is deliberately NOT a fork of Ruflo's src/mcp-bridge/index.js
-// (that file's BACKEND_DEFS is a hardcoded list of six dev-tool CLIs,
-// unrelated to ITSM/runbook servers, and can't be pointed at arbitrary
-// config). It's built on the official @modelcontextprotocol/sdk client,
-// which both stdio and streamable-http backends need anyway.
+// rest of the app one place to call a tool by {backend, tool}. Built on
+// the official @modelcontextprotocol/sdk client.
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";

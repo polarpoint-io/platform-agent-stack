@@ -1,8 +1,7 @@
 {{- if .Values.networkPolicy.enabled }}
 # Default-deny ingress, then allow only the named peers. The bridge
 # authenticates nothing on its own (see README "Security" note) - the
-# NetworkPolicy is the actual access control, same convention the
-# retired ruflo-bridge chart used.
+# NetworkPolicy is the actual access control.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

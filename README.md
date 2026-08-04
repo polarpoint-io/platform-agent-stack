@@ -5,7 +5,7 @@
 # platform-agent-stack
 
 Agent topology, risk policy and the pluggable backends — in one repo,
-fronted by a custom MCP bridge that actually enforces the policy.
+fronted by a custom MCP bridge that enforces the policy.
 
 ## Layout
 
@@ -18,7 +18,7 @@ separate from `bridge/`, the service it deploys. ArgoCD points at
 ```
 platform-agent-stack/
 ├── bridge/                  the MCP bridge itself — see bridge/README.md
-│   ├── src/                 Express + @modelcontextprotocol/sdk, no Ruflo dependency
+│   ├── src/                 Express + @modelcontextprotocol/sdk
 │   └── Dockerfile           builds ghcr.io/polarpoint-io/platform-agent-bridge
 ├── charts/platform-agent-stack/
 │   ├── Chart.yaml
@@ -29,7 +29,7 @@ platform-agent-stack/
 │   ├── itsm-providers/
 │   │   ├── providers/        jira-service-management.mcp.json — the MCP server
 │   │   └── action-mappings/  jira-service-management.yaml — verbs to tool names
-│   ├── llm-providers/        Foundry now, Modelplane later
+│   ├── llm-providers/        anthropic.yaml — the LLM backend the bridge calls
 │   ├── mcp/base.mcp.json     base MCP servers, merged with the provider at render
 │   └── scripts/               config validation, run in CI
 ├── confluence-toolset/    read-only REST, no MCP required (not yet implemented)
@@ -70,10 +70,6 @@ ArgoCD owns this. Register the Application by copying
 — the children template there globs `**/<env>.yaml` and generates the
 Application from it.
 
-There's no `ruflo-bridge` Application to sync first anymore — that repo
-is retired (see "The stack" below). This one Application is now the
-whole thing.
-
 Credentials come from External Secrets Operator. The chart names the
 remote keys; it never holds a value. Set `externalSecrets.secretStoreRef`
 to your real `ClusterSecretStore` before the first sync.
@@ -87,8 +83,7 @@ helm template pas charts/platform-agent-stack --values charts/platform-agent-sta
 
 The chart refuses to render if `itsmProvider` has no provider file, a
 provider file but no action mapping, `image.tag` isn't a plain semver,
-or `networkPolicy.enabled=false`/`service.type` isn't `ClusterIP`. Those
-are deliberate — see the failure message.
+or `networkPolicy.enabled=false`/`service.type` isn't `ClusterIP`.
 
 ## Swapping the ITSM backend
 
@@ -101,9 +96,8 @@ charts/platform-agent-stack/itsm-providers/providers/<name>.mcp.json        the 
 charts/platform-agent-stack/itsm-providers/action-mappings/<name>.yaml      generic verbs to its tool names
 ```
 
-then set `itsmProvider: <name>`. Neither `swarm/` nor `policy/` changes —
-that separation is the point of the layout, and `bridge/` reads the
-mapping at startup rather than having it baked in.
+then set `itsmProvider: <name>`. Neither `swarm/` nor `policy/` changes,
+and `bridge/` reads the mapping at startup rather than having it baked in.
 
 Get the tool names from the running server (`tools/list`), never from an
 example. A verb mapped to the wrong tool doesn't error; it executes under
@@ -115,17 +109,11 @@ tiers cleanly.
 
 ## The bridge
 
-`bridge/` is what actually does what this repo's config describes:
-connects to the ITSM MCP server and `holmesgpt-runbook-mcp`, resolves
-every requested action through `policy/risk-tiers.yaml` +
+`bridge/` connects to the ITSM MCP server and `holmesgpt-runbook-mcp`,
+resolves every requested action through `policy/risk-tiers.yaml` +
 `itsm-providers/action-mappings/`, and routes inbound requests between
-HolmesGPT (infra) and the ITSM backend (tickets). It's plain
-Express + `@modelcontextprotocol/sdk` — not a Ruflo image. See
-`bridge/README.md` for exactly what was checked in the real `ruflo` npm
-package before concluding it couldn't do this, and for what's real
-versus not yet built (there's no Slack app wired up yet, Confluence has
-no backend, and a few of `sre-investigator`'s toolsets are handled by
-relaying to Holmes instead of being connected directly).
+HolmesGPT (infra) and the ITSM backend (tickets). See `bridge/README.md`
+for endpoints and known gaps.
 
 ## The stack
 
@@ -134,7 +122,3 @@ relaying to Holmes instead of being connected directly).
 | [`platform-agent-stack`](https://github.com/polarpoint-io/platform-agent-stack) | Agent topology, risk policy, pluggable ITSM/LLM/Confluence backends, and the bridge that enforces all of it |
 | [`mongostate-crossplane`](https://github.com/polarpoint-io/mongostate-crossplane) | Portable Mongo-compatible state across four platforms — not currently wired into the bridge (pending approvals are in-memory; see bridge/README.md) |
 | [`holmesgpt-runbook-mcp`](https://github.com/polarpoint-io/holmesgpt-runbook-mcp) | Pre-existing — runbook search, RCA and drafting |
-
-`ruflo-bridge` is retired. Its job (host the agents, terminate MCP,
-enforce the policy) is what `bridge/` in this repo does now — see that
-repo's README for the deprecation note.

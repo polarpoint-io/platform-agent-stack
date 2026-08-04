@@ -1,8 +1,5 @@
-# Builds and publishes the custom MCP bridge (bridge/) this repo's own
-# Deployment runs. Replaces build-ruflo-image.yml - bridge/ is plain
-# Node/Express + @modelcontextprotocol/sdk, not a Ruflo image, so
-# there's no upstream npm package to install here. See bridge/README.md
-# for why this exists instead of depending on Ruflo at all.
+# Builds and publishes the MCP bridge image (bridge/) this repo's
+# Deployment runs.
 name: Build bridge image
 
 on:

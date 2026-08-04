@@ -1,10 +1,8 @@
-// sre-investigator, made real. Holmes does its own tool orchestration
-// internally (kubernetes/core, logs, prometheus, etc. - see its own
-// Application values) so this doesn't reimplement an investigation
-// loop; it relays to Holmes for the diagnosis, then separately offers
-// runbook_search as tier-1 supporting context. runbook_draft (tier 2,
-// opens a draft PR) still goes through the executor/policy gate exactly
-// like every other action - Holmes itself never gets a write path.
+// sre-investigator: relays to Holmes for the diagnosis (Holmes does
+// its own tool orchestration internally - kubernetes/core, logs,
+// prometheus, etc.), then separately offers runbook_search as tier-1
+// supporting context. runbook_draft (tier 2, opens a draft PR) goes
+// through the executor/policy gate like every other action.
 
 import { askHolmes } from "./holmes.js";
 

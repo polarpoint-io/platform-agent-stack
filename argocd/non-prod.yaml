@@ -7,8 +7,6 @@
 # .Files.Get calls in the chart's templates are relative to that chart
 # directory, so swarm/, policy/, itsm-providers/ etc. live there too.
 #
-# ruflo-bridge (separate repo/Application) is retired - see this repo's
-# top-level README "The bridge" section.
 chart:
   name: platform-agent-stack
   url: git@github.com:polarpoint-io/platform-agent-stack.git

@@ -20,12 +20,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{/*
-This used to assert a Ruflo image floor (CVE-2026-59726). That doesn't
-apply anymore - bridge/ is our own code, built and versioned by this
-repo's own CI, not an upstream Ruflo image. Kept as a lighter hygiene
-check: still refuse a non-semver tag like "latest", since an
-unpredictable tag on a Deployment is a bad idea regardless of whose
-code it is.
+Refuses a non-semver image tag like "latest".
 */}}
 {{- define "platform-agent-stack.assertVersion" -}}
 {{- $tag := .Values.image.tag | default .Chart.AppVersion -}}

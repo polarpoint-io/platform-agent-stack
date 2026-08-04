@@ -1,8 +1,6 @@
-// Everything here is straight out of risk-tiers.yaml and
-// action-mappings/<provider>.yaml — this file just enforces what those
-// two already say, in code, instead of them sitting unread in a
-// ConfigMap. See ../../policy/README.md and ../../itsm-providers/README.md
-// for the reasoning behind the tiers and the deliberately-unmapped verbs.
+// Enforces risk-tiers.yaml and action-mappings/<provider>.yaml. See
+// ../../policy/README.md and ../../itsm-providers/README.md for what
+// the tiers mean and which verbs are deliberately unmapped.
 
 // Tools whose name IS already the policy verb - no action-mapping
 // needed. Currently just holmesgpt-runbook-mcp, whose tool names were

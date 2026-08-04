@@ -13,11 +13,11 @@ contains:
   - path: charts/platform-agent-stack/itsm-providers/
     owns: "Pluggable ITSM MCP backends and their action mappings"
   - path: charts/platform-agent-stack/llm-providers/
-    owns: "Which LLM backend agents call — Azure AI Foundry now, Modelplane later"
+    owns: "Which LLM backend agents call — currently Anthropic"
   - path: confluence-toolset/
     owns: "Read-only Confluence access via REST, for when Confluence MCP isn't available"
   - path: bridge/
-    owns: "The MCP bridge itself — connects to the ITSM/runbook MCP servers, enforces risk-tiers.yaml, routes triage. Not a Ruflo image; see bridge/README.md"
+    owns: "The MCP bridge itself — connects to the ITSM/runbook MCP servers, enforces risk-tiers.yaml, routes triage. See bridge/README.md"
 
 separate_repos:
   - repo: polarpoint-io/holmesgpt-runbook-mcp

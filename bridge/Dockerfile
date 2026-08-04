@@ -1,10 +1,4 @@
-# platform-agent-bridge - custom code, not a Ruflo image. See ../README.md
-# "How it works" for why: neither Ruflo's CLI (bin/ruflo.js) nor its own
-# bundled src/mcp-bridge/index.js has a way to register arbitrary MCP
-# servers from config or gate calls against a risk-tiers.yaml-style
-# policy - both were checked directly against the real npm package
-# before writing this. This is a plain Express + @modelcontextprotocol/sdk
-# service instead.
+# platform-agent-bridge - Express + @modelcontextprotocol/sdk service.
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package.json ./

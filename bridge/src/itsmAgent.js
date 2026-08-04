@@ -1,11 +1,8 @@
-// itsm-support, made real. The LLM only ever sees the generic policy
-// verbs (search_tickets, get_ticket, add_ticket_comment, create_ticket,
-// ...) from risk-tiers.yaml - never the ITSM backend's real tool names.
-// That's deliberate: it mirrors the blog's step 4 ("resolves each
-// generic verb through the action mapping"), and it means the LLM
-// cannot request a tool that has no mapping - policy.decide() still
-// gates whatever it picks, but the model's own choices are already
-// scoped to named, tiered verbs.
+// itsm-support: the LLM only ever sees the generic policy verbs
+// (search_tickets, get_ticket, add_ticket_comment, create_ticket, ...)
+// from risk-tiers.yaml, never the ITSM backend's real tool names.
+// policy.decide() still gates whatever it picks, but the model's own
+// choices are already scoped to named, tiered verbs.
 
 import { chatCompletion } from "./llm.js";
 

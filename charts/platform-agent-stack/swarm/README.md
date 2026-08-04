@@ -28,4 +28,4 @@ actionMapping  ../itsm-providers/action-mappings/${ITSM_PROVIDER}.yaml
 
 - [`../policy`](../policy) — the tiers these agents are gated by
 - [`../itsm-providers`](../itsm-providers) — backends and action mappings
-- [`https://github.com/polarpoint-io/ruflo-bridge`](https://github.com/polarpoint-io/ruflo-bridge) — the runtime this runs on
+- [`../../bridge`](../../bridge) — the service that runs this topology

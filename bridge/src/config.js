@@ -1,9 +1,7 @@
-// Loads the config this repo already renders into two ConfigMaps
-// (templates/configmap-config.yaml, templates/configmap-mcp.yaml) and
-// mounts at /config and /app/.mcp.json. Nothing here is new schema -
-// it's the same swarm.config.json / risk-tiers.yaml / action-mappings /
-// llm-provider.yaml / .mcp.json this repo has always rendered. This
-// process is just the first real reader of them.
+// Loads config from the two ConfigMaps this chart renders
+// (templates/configmap-config.yaml, templates/configmap-mcp.yaml),
+// mounted at /config and /app/.mcp.json: swarm.config.json,
+// risk-tiers.yaml, action-mappings.yaml, llm-provider.yaml, .mcp.json.
 
 import { readFileSync, existsSync } from "node:fs";
 import yaml from "js-yaml";

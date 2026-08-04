@@ -1,13 +1,8 @@
 // platform-agent-bridge - triage-router + itsm-support live here
 // in-process; sre-investigator relays to HolmesGPT's own deployment.
-// One Deployment, three jobs (same shape as the blog's "Inside the
-// Ruflo bridge" section): hosts the agents, terminates MCP (every tool
-// call for every backend goes through backends.js), enforces the
-// policy (every tool call for every backend goes through executor.js
-// first). This replaces both the old ruflo-image "swarm" container and
-// the separate ruflo-bridge repo/Application - neither Ruflo's CLI nor
-// its own mcp-bridge had a way to do any of this (see the repo-level
-// notes in README.md for what was actually checked before writing this).
+// Hosts the agents, terminates MCP (every tool call for every backend
+// goes through mcpBackends.js), and enforces the policy (every tool
+// call for every backend goes through executor.js first).
 
 import express from "express";
 import { loadConfig } from "./config.js";
@@ -40,9 +35,7 @@ async function main() {
     });
   });
 
-  // The single front door. triage-router classifies, then hands off -
-  // "What Tuesday looks like with the router in place" in the README,
-  // as one HTTP call.
+  // The single front door. triage-router classifies, then hands off.
   app.post("/triage", async (req, res) => {
     const text = req.body?.text;
     if (!text) return res.status(400).json({ error: "body.text is required" });

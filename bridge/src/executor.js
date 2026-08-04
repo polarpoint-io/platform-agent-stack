@@ -1,8 +1,6 @@
-// The one place every tool call passes through, no matter which
-// specialist wants it. This is "the bridge... enforces the policy" from
-// the blog, made real: policy.decide() first, then act on the decision.
-// Tier 3 never calls the backend here - it's parked and must be
-// explicitly approved via POST /approvals/:id/approve.
+// The one place every tool call passes through: policy.decide() first,
+// then act on the decision. Tier 3 never calls the backend here - it's
+// parked and must be explicitly approved via POST /approvals/:id/approve.
 
 import { randomUUID } from "node:crypto";
 
