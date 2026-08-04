@@ -11,10 +11,17 @@
 provider: freshservice
 
 # Tool names below are from github.com/effytech/freshservice_mcp (MIT,
-# self-hosted via `uvx freshservice-mcp`), read directly from its
-# src/freshservice_mcp/server.py @mcp.tool() definitions at the time this
-# was written - not a guess, but also not a promise about a future release.
-# Confirm with tools/list before trusting them.
+# self-hosted via `uvx freshservice-mcp`), originally read from its
+# src/freshservice_mcp/server.py @mcp.tool() definitions.
+#
+# VERIFIED 2026-08-04 against a live tools/list from version 1.0.0 (74
+# tools): all 6 mappings below resolve to tools that exist. Re-check after
+# any version bump with:
+#     python3 ../../scripts/list-provider-tools.py freshservice
+# It spawns the server the same way mcpBackends.js does and exits non-zero
+# if a mapped verb points at a tool the server doesn't expose. That case is
+# silent at runtime - executor.js calls it and the backend rejects it, which
+# reads like a connectivity problem rather than a mapping one.
 
 actions:
   # tier 1 - read-only

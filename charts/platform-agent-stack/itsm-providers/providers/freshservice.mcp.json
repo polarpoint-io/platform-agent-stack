@@ -1,12 +1,14 @@
 {
   "itsm": {
     "command": "uvx",
-    "args": ["freshservice-mcp"],
+    "args": ["--with", "mcp<2", "freshservice-mcp"],
+    "_pin": "freshservice-mcp 1.0.0 declares 'mcp[cli]>=1.3.0' with no upper bound, so uvx resolves mcp 2.0.0, which removed mcp.server.fastmcp. The server then dies at import with ModuleNotFoundError before serving anything, and mcpBackends.js reports it as a generic 'Connection closed'. Pinning below 2 resolves mcp 1.29.0 and the server starts. This is a fresh resolve on every pod start, so it will break again the moment any other unbounded dependency of theirs cuts a major - if this backend stops connecting after a restart with no change on our side, check the log for an import error before anything else. Drop the pin once upstream bounds it.",
     "env": {
       "FRESHSERVICE_DOMAIN": "polarpoint.freshservice.com",
       "FRESHSERVICE_APIKEY": "${FRESHSERVICE_APIKEY}"
     },
     "_note": "Self-hosted community server (github.com/effytech/freshservice_mcp, MIT), run via uvx - stdio transport, not a hosted remote endpoint. Freshworks does have its own native MCP integration, but as of writing it's Beta/EAP-gated to selected Enterprise-plan customers (see developers.freshworks.com/docs/agentic-dev-tools/mcp-server/) - this community server works today without needing that program. FRESHSERVICE_APIKEY comes from Profile Settings -> API Settings in the Freshservice admin panel.",
-    "_todo_verify": "If/when Freshworks' own hosted MCP server is available on your plan, it likely follows the same OAuth pattern as Atlassian's (see jira-service-management.mcp.json) and this becomes a url/transport block instead of command/args. Confirm tool names against a live tools/list before trusting action-mappings/freshservice.yaml - see that file's header comment for a real, non-obvious finding about update_ticket."
+    "_verified": "2026-08-04: all 6 mapped verbs checked against a live tools/list from freshservice-mcp 1.0.0 (74 tools) - filter_tickets, get_ticket_by_id, get_list_of_solution_article, get_solution_article, create_ticket_note and create_ticket all exist. Re-run scripts/list-provider-tools.py freshservice after any version bump; it diffs the mapping against the running server and exits non-zero on a miss.",
+    "_todo_verify": "If/when Freshworks' own hosted MCP server is available on your plan, it likely follows the same OAuth pattern as Atlassian's (see jira-service-management.mcp.json) and this becomes a url/transport block instead of command/args - the tool names would need re-verifying against THAT server, they are not the same product."
   }
 }
