@@ -1,7 +1,5 @@
 {
-  "mcpServers": {
-    "kubernetes": { "command": "npx", "args": ["-y", "kubernetes-mcp-server@latest"], "env": { "READ_ONLY": "true" } },
-    "prometheus": { "command": "npx", "args": ["-y", "prometheus-mcp-server@latest"], "env": { "PROMETHEUS_URL": "${PROMETHEUS_URL}" } }
-  },
-  "_note": "Base config. platform-agent-stack/setup.sh merges the chosen ITSM provider in as mcpServers.itsm — it does not edit this file in place, it backs it up first. Server names and args above are the general shape; verify against the packages you actually install."
+  "mcpServers": {},
+  "_note": "Base config. platform-agent-stack/setup.sh merges the chosen ITSM provider in as mcpServers.itsm - it does not edit this file in place, it backs it up first. Server names and args are the general shape; verify against the packages you actually install.",
+  "_removed": "kubernetes and prometheus (npx kubernetes-mcp-server / prometheus-mcp-server) used to sit here and were unreachable: bridge/src/policy.js resolve() only ever returns backend \"itsm\" (from an action-mapping) or \"runbook_mcp\" (DIRECT_VERBS), so no verb could route to them and executor.js had no way to call them. mcpBackends.connectAll() still spawned both at every boot, where they failed on a read-only rootfs and filled the log with npm ENOENT noise that masked the real itsm failure. Holmes owns the kubernetes/prometheus toolsets anyway - see the 'Known gaps' section of bridge/README.md, and sre-investigator's toolset in swarm/swarm.config.json, which relays to Holmes rather than connecting these directly. Re-adding either means giving policy.js a way to resolve verbs to them first, not just putting the server back."
 }

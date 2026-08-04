@@ -26,6 +26,31 @@ spec:
           env:
             - name: PORT
               value: "{{ .Values.service.port }}"
+            # swarm.config.json resolves actionMapping via ${ITSM_PROVIDER}.
+            # config.js reads the already-rendered /config/action-mappings.yaml
+            # instead, so nothing breaks when this is unset - but the
+            # placeholder then survives substitution and config.js logs a
+            # warning for it at every boot. Set it from the same value the
+            # chart used to pick the mapping, so the two can't disagree.
+            - name: ITSM_PROVIDER
+              value: {{ .Values.itsmProvider | quote }}
+            # readOnlyRootFilesystem is on and /tmp is the only writable
+            # mount, but uvx spawns the ITSM MCP server and wants a cache
+            # under $HOME. Left at the image default (/home/bridge) it dies
+            # with ENOENT/EROFS before the server ever starts. Point every
+            # cache uv and npm might reach for at the emptyDir.
+            - name: HOME
+              value: /tmp
+            - name: XDG_CACHE_HOME
+              value: /tmp/.cache
+            - name: XDG_DATA_HOME
+              value: /tmp/.local/share
+            - name: UV_CACHE_DIR
+              value: /tmp/.cache/uv
+            - name: UV_PYTHON_INSTALL_DIR
+              value: /tmp/.local/share/uv/python
+            - name: NPM_CONFIG_CACHE
+              value: /tmp/.npm
             - name: HOLMES_URL
               value: {{ .Values.holmesUrl | quote }}
             - name: HOLMES_RUNBOOK_MCP_URL

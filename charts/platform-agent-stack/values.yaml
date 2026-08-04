@@ -10,7 +10,7 @@ llmProvider: anthropic
 image:
   # Built and pushed by .github/workflows/build-bridge-image.yml from bridge/.
   repository: ghcr.io/polarpoint-io/platform-agent-bridge
-  tag: "0.2.0"
+  tag: "0.2.1"
   pullPolicy: IfNotPresent
 
 replicaCount: 1
@@ -27,6 +27,14 @@ networkPolicy:
   allowedPodLabels: {}
 
 # HolmesGPT's Service. Endpoint called: POST {holmesUrl}/api/chat.
+#
+# Both URLs below are cluster-local, so this chart has to be deployed to
+# the SAME cluster as HolmesGPT - currently multitenant, via
+# argocd-foundational-applications' non-prod-multitenant descriptors.
+# Deployed anywhere else these resolve to nothing and the SRE lane dies
+# quietly: mcpBackends.connectAll() is best-effort, so runbook_mcp just
+# logs "fetch failed" and every runbook verb reports "not connected".
+# Point them at a routable address first if the two ever get split.
 holmesUrl: "http://holmes-non-prod-multitenant-holmes.holmesgpt.svc:80"
 
 # holmesgpt-runbook-mcp's Service.
@@ -40,10 +48,14 @@ slackWebhookUrl: ""
 # the chart only names where to find it.
 externalSecrets:
   enabled: true
-  # TODO(verify): SecretStore name and backing paths are placeholders.
-  # Set these to your actual ClusterSecretStore before syncing.
+  # Every cluster in this estate runs ESO with the Kubernetes provider
+  # and a ClusterSecretStore of this name, reading from a `secrets-store`
+  # namespace on that same cluster - see ansible-rke2-installer's
+  # external_secrets role. Nothing is shared across clusters, so the
+  # remoteKeys below have to be seeded into whichever cluster this is
+  # deployed to before the first sync.
   secretStoreRef:
-    name: polarpoint-secret-store
+    name: cluster-secrets-store
     kind: ClusterSecretStore
   refreshInterval: 1h
   keys:
