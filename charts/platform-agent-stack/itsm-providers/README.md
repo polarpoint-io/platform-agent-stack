@@ -1,7 +1,7 @@
 # itsm-providers
 
-Pluggable ITSM MCP backends. Jira Service Management today, swappable without
-touching the swarm or the risk policy.
+Pluggable ITSM MCP backends, swappable without touching the swarm or the
+risk policy.
 
 ## Layout
 
