@@ -155,10 +155,29 @@ curl -s -X POST localhost:3000/triage   -H 'content-type: application/json'   -d
 
 ## Known gaps
 
-- **No Slack app.** `/triage` is a plain HTTP endpoint; nothing calls it
-  automatically when someone posts in a channel. Wiring an actual Slack
-  Events API subscription (or a slash command) to POST here is the
-  remaining piece.
+- **Nothing delivers requests.** `/triage` is a plain HTTP endpoint on a
+  ClusterIP Service behind a deny-all NetworkPolicy. No Slack app, no
+  Teams bot, no Alertmanager receiver, no ingress. Every request so far
+  has been posted by hand from inside the pod.
+
+  Three separate things are missing, and only one is a bot: a network
+  path in, authentication (this service has none — the NetworkPolicy is
+  the access control), and an adapter that maps the source's payload
+  onto `POST /triage`.
+
+  **A chat integration cannot be a thin proxy.** Slack requires an ack
+  within 3 seconds and Teams' Bot Framework expects the same. Measured on
+  the deployed bridge: ITSM lane ~6s, infra lane ~29s (Holmes actually
+  investigates), `runbook_draft` up to its 180s timeout. Any bot has to
+  ack immediately, work asynchronously, and post back to the thread —
+  which `/triage`'s synchronous request/response shape doesn't support
+  today.
+
+  Cheapest first integration is an in-cluster POST from an alert source
+  or an ITSM outbound webhook: no public endpoint, no signature
+  verification, no 3-second limit. A bot is only strictly needed for a
+  human typing a sentence, and for approving tier-3 actions with a button
+  instead of a UUID.
 - **`itsm-support`'s tool-calling is single-turn.** One completion picks
   zero-or-one action and calls it. It doesn't loop (call a tool, look at
   the result, decide whether to call another). Because of that it also
