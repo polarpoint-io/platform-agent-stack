@@ -192,3 +192,30 @@ test("an unreachable MongoDB degrades instead of killing the bridge", async () =
   const id = await jobs.enqueue({ text: "still serving" });
   assert.equal((await jobs.get(id)).status, QUEUED);
 });
+
+// --- reaching the database through a proxy --------------------------------
+
+test("rewriteMongoHost repoints the host and forces a direct connection", async () => {
+  const { rewriteMongoHost } = await import("../src/stateStore.js");
+  const original =
+    "mongodb://user:pw@mongostate-x-rs0.agents.svc.cluster.local/platform_agent_stack?replicaSet=rs0&ssl=false";
+  const out = new URL(rewriteMongoHost(original, "pas-mongo-egress:27017"));
+
+  assert.equal(out.host, "pas-mongo-egress:27017");
+  assert.equal(out.username, "user", "credentials must survive");
+  assert.equal(out.password, "pw");
+  assert.equal(out.pathname, "/platform_agent_stack", "database must survive");
+  assert.equal(out.searchParams.get("ssl"), "false", "other options must survive");
+
+  // The point of the exercise: with replicaSet set, the driver rediscovers
+  // members by their controller-internal names and cannot reach them.
+  assert.equal(out.searchParams.get("replicaSet"), null, "replicaSet must be dropped");
+  assert.equal(out.searchParams.get("directConnection"), "true");
+});
+
+test("rewriteMongoHost is a no-op without an override", async () => {
+  const { rewriteMongoHost } = await import("../src/stateStore.js");
+  const uri = "mongodb://u:p@host/db?replicaSet=rs0";
+  assert.equal(rewriteMongoHost(uri, ""), uri, "must not mangle the URI when unused");
+  assert.equal(rewriteMongoHost("", "x:27017"), "");
+});

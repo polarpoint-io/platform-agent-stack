@@ -9,7 +9,7 @@ import { loadConfig } from "./config.js";
 import { Policy, assertVerbsResolve } from "./policy.js";
 import { BackendRegistry } from "./mcpBackends.js";
 import { createExecutor } from "./executor.js";
-import { createStateStore } from "./stateStore.js";
+import { createStateStore, rewriteMongoHost } from "./stateStore.js";
 import { createJobs, startWorker, QUEUED, RUNNING } from "./jobs.js";
 import { notifySlack } from "./notify.js";
 import { classify } from "./llm.js";
@@ -24,7 +24,9 @@ async function main() {
   // Say so at boot if any verb points at a tool its backend does not have.
   assertVerbsResolve(policy, backends);
 
-  const state = await createStateStore(config.mongoUri);
+  const state = await createStateStore(
+    rewriteMongoHost(config.mongoUri, config.mongoHostOverride)
+  );
   const approvalsStore = state.approvals;
   const jobs = createJobs(state.jobs);
   const executor = createExecutor({ policy, backends, slackWebhookUrl: config.slackWebhookUrl, notifySlack, approvalsStore, resultChecks: config.resultChecks });

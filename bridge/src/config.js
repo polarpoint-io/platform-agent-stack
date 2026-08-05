@@ -82,6 +82,9 @@ export function loadConfig() {
     // Pending tier-3 approvals are MongoDB-backed when set, in-memory
     // otherwise - see stateStore.js.
     mongoUri: process.env.MONGO_URI || "",
+    // Set when the database is reached through a proxy rather than at the
+    // address baked into the connection secret - see rewriteMongoHost().
+    mongoHostOverride: process.env.MONGO_HOST_OVERRIDE || "",
     port: parseInt(process.env.PORT || "3000", 10),
   };
 }

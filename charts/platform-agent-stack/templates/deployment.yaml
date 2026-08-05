@@ -56,6 +56,15 @@ spec:
             # the PR, so the caller saw a failure for a completed action.
             - name: MCP_TOOL_TIMEOUT_MS
               value: {{ .Values.mcpToolTimeoutMs | quote }}
+            {{- if and .Values.mongoState.enabled .Values.mongoState.tailnetFqdn }}
+            # The connection secret's host only resolves on the controller
+            # cluster. Point the driver at the local tailnet egress Service
+            # instead; stateStore.js also forces directConnection, because
+            # replica-set discovery would send it back to the unreachable
+            # internal names.
+            - name: MONGO_HOST_OVERRIDE
+              value: "{{ include "platform-agent-stack.fullname" . }}-mongo-egress:27017"
+            {{- end }}
             - name: HOLMES_URL
               value: {{ .Values.holmesUrl | quote }}
             - name: HOLMES_RUNBOOK_MCP_URL

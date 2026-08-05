@@ -1,0 +1,23 @@
+{{- if and .Values.mongoState.enabled .Values.mongoState.tailnetFqdn }}
+# Local ClusterIP that proxies out to the MongoDB on the controller cluster
+# over the tailnet.
+#
+# The connection secret Crossplane writes carries a cluster-local address that
+# only resolves on controller, so a bridge running anywhere else gets NXDOMAIN.
+# The tailscale operator turns this annotation into an egress proxy: pods here
+# talk to an ordinary in-cluster Service name, and the operator carries the
+# traffic to the tailnet host. Nothing here needs to be on the tailnet itself.
+#
+# Pairs with the tailscale.com/expose Service on controller - see
+# mongostate-crossplane's manifests/tailscale-expose.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "platform-agent-stack.fullname" . }}-mongo-egress
+  labels: {{- include "platform-agent-stack.labels" . | nindent 4 }}
+  annotations:
+    tailscale.com/tailnet-fqdn: {{ .Values.mongoState.tailnetFqdn | quote }}
+spec:
+  externalName: placeholder  # replaced by the operator
+  type: ExternalName
+{{- end }}

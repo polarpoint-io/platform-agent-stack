@@ -84,6 +84,31 @@ function mongoCollection(clientReady, name) {
   };
 }
 
+/**
+ * Point a connection string at a different host, for reaching the database
+ * through a proxy.
+ *
+ * The subtle part is `directConnection`. The URI Crossplane writes carries
+ * `replicaSet=rs0`, which puts the driver into replica-set discovery: it
+ * connects, asks the server for the set's members, and then talks to the
+ * hostnames the server advertises - which are the controller-internal ones.
+ * Through a tailnet egress proxy those are unreachable, so the driver would
+ * connect successfully and then immediately fail server selection, which
+ * looks like the proxy is broken when it isn't.
+ *
+ * Forcing a direct connection skips discovery and talks to the proxy address
+ * only. Safe here because the set is a single member; it would need revisiting
+ * for a real multi-member set, where the answer is exposing each member.
+ */
+export function rewriteMongoHost(uri, host) {
+  if (!uri || !host) return uri;
+  const parsed = new URL(uri);
+  parsed.host = host;
+  parsed.searchParams.delete("replicaSet");
+  parsed.searchParams.set("directConnection", "true");
+  return parsed.toString();
+}
+
 function inMemoryStore(reason) {
   return {
     approvals: inMemoryCollection(),

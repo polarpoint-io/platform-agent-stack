@@ -10,7 +10,7 @@ llmProvider: anthropic
 image:
   # Built and pushed by .github/workflows/build-bridge-image.yml from bridge/.
   repository: ghcr.io/polarpoint-io/platform-agent-bridge
-  tag: "0.3.1"
+  tag: "0.3.2"
   pullPolicy: IfNotPresent
 
 # Per-tool-call timeout for MCP requests. The SDK default of 60s is too
@@ -135,3 +135,9 @@ mongoState:
   # "could not get secret data from provider" that says nothing about why.
   remoteSecretName: agent-swarm-state
   remoteSecretNamespace: agents
+  # Tailnet name of the MongoDB, exposed from controller by
+  # mongostate-crossplane's manifests/tailscale-expose.yaml. When set, the
+  # chart creates a local egress Service and points the driver at it - the
+  # address inside the connection secret only resolves on controller.
+  # Leave empty when the database is in the same cluster.
+  tailnetFqdn: ""
