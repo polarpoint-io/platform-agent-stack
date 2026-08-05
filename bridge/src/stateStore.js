@@ -84,23 +84,63 @@ function mongoCollection(clientReady, name) {
   };
 }
 
-export function createStateStore(mongoUri) {
+function inMemoryStore(reason) {
+  return {
+    approvals: inMemoryCollection(),
+    jobs: inMemoryCollection(),
+    durable: false,
+    degradedReason: reason || null,
+    async close() {},
+  };
+}
+
+/**
+ * Durability is best-effort, and its absence is reported rather than fatal.
+ *
+ * An unreachable state store used to kill the process, so the bridge
+ * crash-looped and took the ITSM and SRE lanes down with it - both of which
+ * work perfectly well without durable queues. Losing persistence is not a
+ * reason to stop answering.
+ *
+ * The failure is NOT swallowed: it's logged at error, /status reports
+ * durableState:false with degradedReason, and the fallback is in-memory. That
+ * distinction matters - the thing to avoid is claiming durability you don't
+ * have, not degrading.
+ */
+export async function createStateStore(mongoUri, { connectTimeoutMs = 10000 } = {}) {
   if (!mongoUri) {
     console.log("[state] MONGO_URI not set - approvals and triage jobs are in-memory only (lost on restart)");
-    const approvals = inMemoryCollection();
-    const jobs = inMemoryCollection();
-    return { approvals, jobs, durable: false, async close() {} };
+    return inMemoryStore("MONGO_URI not set");
   }
 
-  console.log("[state] MONGO_URI set - approvals and triage jobs are MongoDB-backed");
-  const client = new MongoClient(mongoUri);
-  const connected = client.connect();
-  return {
-    approvals: mongoCollection(connected, "pending_approvals"),
-    jobs: mongoCollection(connected, "triage_jobs"),
-    durable: true,
-    async close() {
-      await client.close();
-    },
-  };
+  const client = new MongoClient(mongoUri, {
+    serverSelectionTimeoutMS: connectTimeoutMs,
+    connectTimeoutMS: connectTimeoutMs,
+  });
+
+  try {
+    const connected = await client.connect();
+    // connect() resolves before a server has necessarily been selected, so
+    // ping - otherwise the first real write is where we'd find out.
+    await connected.db().command({ ping: 1 });
+    console.log("[state] MongoDB reachable - approvals and triage jobs are durable");
+    const ready = Promise.resolve(connected);
+    return {
+      approvals: mongoCollection(ready, "pending_approvals"),
+      jobs: mongoCollection(ready, "triage_jobs"),
+      durable: true,
+      degradedReason: null,
+      async close() {
+        await client.close();
+      },
+    };
+  } catch (err) {
+    console.error(
+      `[state] MONGO_URI is set but MongoDB is unreachable (${err.message}). ` +
+      `Falling back to in-memory: parked approvals and queued jobs will NOT survive a restart. ` +
+      `Serving anyway - the ITSM and SRE lanes do not need durable state.`
+    );
+    await client.close().catch(() => {});
+    return inMemoryStore(`MongoDB unreachable: ${err.message}`);
+  }
 }

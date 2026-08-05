@@ -7,16 +7,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { createStateStore } from "../src/stateStore.js";
+
 import { createJobs, startWorker, QUEUED, RUNNING, DONE, FAILED } from "../src/jobs.js";
 
-function newJobs() {
-  return createJobs(createStateStore("").jobs);
+async function newJobs() {
+  return createJobs((await createStateStore("")).jobs);
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
 test("enqueue returns an id and the job starts queued", async () => {
-  const jobs = newJobs();
+  const jobs = await newJobs();
   const id = await jobs.enqueue({ text: "pods are restarting" });
   const job = await jobs.get(id);
   assert.equal(job.status, QUEUED);
@@ -25,7 +26,7 @@ test("enqueue returns an id and the job starts queued", async () => {
 });
 
 test("claim takes the oldest job and marks it running", async () => {
-  const jobs = newJobs();
+  const jobs = await newJobs();
   const first = await jobs.enqueue({ text: "one" });
   await tick();
   await jobs.enqueue({ text: "two" });
@@ -37,7 +38,7 @@ test("claim takes the oldest job and marks it running", async () => {
 });
 
 test("a job is only claimed once", async () => {
-  const jobs = newJobs();
+  const jobs = await newJobs();
   await jobs.enqueue({ text: "only me" });
   const a = await jobs.claim();
   const b = await jobs.claim();
@@ -46,11 +47,11 @@ test("a job is only claimed once", async () => {
 });
 
 test("claim returns undefined on an empty queue", async () => {
-  assert.equal(await newJobs().claim(), undefined);
+  assert.equal(await (await newJobs()).claim(), undefined);
 });
 
 test("complete stores the result", async () => {
-  const jobs = newJobs();
+  const jobs = await newJobs();
   const id = await jobs.enqueue({ text: "x" });
   await jobs.claim();
   await jobs.complete(id, { lane: "itsm_ticket", actions: [] });
@@ -61,7 +62,7 @@ test("complete stores the result", async () => {
 });
 
 test("fail stores the reason rather than losing it", async () => {
-  const jobs = newJobs();
+  const jobs = await newJobs();
   const id = await jobs.enqueue({ text: "x" });
   await jobs.claim();
   await jobs.fail(id, new Error("Holmes unreachable"));
@@ -73,7 +74,7 @@ test("fail stores the reason rather than losing it", async () => {
 // --- crash recovery -------------------------------------------------------
 
 test("a job abandoned mid-flight is requeued", async () => {
-  const jobs = newJobs();
+  const jobs = await newJobs();
   const id = await jobs.enqueue({ text: "x" });
   await jobs.claim();
 
@@ -89,7 +90,7 @@ test("a job abandoned mid-flight is requeued", async () => {
 });
 
 test("requeueStale leaves finished jobs alone", async () => {
-  const jobs = newJobs();
+  const jobs = await newJobs();
   const id = await jobs.enqueue({ text: "x" });
   await jobs.claim();
   await jobs.complete(id, { lane: "unknown" });
@@ -100,7 +101,7 @@ test("requeueStale leaves finished jobs alone", async () => {
 // --- worker ---------------------------------------------------------------
 
 test("the worker drains the queue and records results", async () => {
-  const jobs = newJobs();
+  const jobs = await newJobs();
   const seen = [];
   const a = await jobs.enqueue({ text: "one" });
   const b = await jobs.enqueue({ text: "two" });
@@ -123,7 +124,7 @@ test("the worker drains the queue and records results", async () => {
 });
 
 test("one failing job does not stop the worker", async () => {
-  const jobs = newJobs();
+  const jobs = await newJobs();
   const bad = await jobs.enqueue({ text: "boom" });
   const good = await jobs.enqueue({ text: "fine" });
 
@@ -150,7 +151,7 @@ test("one failing job does not stop the worker", async () => {
 });
 
 test("onResult is told about failures too, not just successes", async () => {
-  const jobs = newJobs();
+  const jobs = await newJobs();
   await jobs.enqueue({ text: "boom" });
   const seen = [];
   const worker = startWorker({
@@ -169,8 +170,25 @@ test("onResult is told about failures too, not just successes", async () => {
 
 // --- store ----------------------------------------------------------------
 
-test("the in-memory store reports itself as not durable", () => {
-  const s = createStateStore("");
+test("the in-memory store reports itself as not durable", async () => {
+  const s = await createStateStore("");
   assert.equal(s.durable, false, "/status must be honest that a restart loses state");
   assert.ok(s.approvals && s.jobs, "both collections exist either way");
+});
+
+test("an unreachable MongoDB degrades instead of killing the bridge", async () => {
+  // A state store being down used to be fatal, so the pod crash-looped and
+  // took the ITSM and SRE lanes with it - neither of which needs durability.
+  // Losing persistence is not a reason to stop answering; claiming durability
+  // you do not have would be.
+  const s = await createStateStore(
+    "mongodb://nobody@does-not-resolve.invalid:27017/x?serverSelectionTimeoutMS=250",
+    { connectTimeoutMs: 250 }
+  );
+  assert.equal(s.durable, false);
+  assert.match(s.degradedReason, /unreachable/i, "/status must say why, not just that");
+  // and it still works
+  const jobs = createJobs(s.jobs);
+  const id = await jobs.enqueue({ text: "still serving" });
+  assert.equal((await jobs.get(id)).status, QUEUED);
 });

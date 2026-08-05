@@ -24,7 +24,7 @@ async function main() {
   // Say so at boot if any verb points at a tool its backend does not have.
   assertVerbsResolve(policy, backends);
 
-  const state = createStateStore(config.mongoUri);
+  const state = await createStateStore(config.mongoUri);
   const approvalsStore = state.approvals;
   const jobs = createJobs(state.jobs);
   const executor = createExecutor({ policy, backends, slackWebhookUrl: config.slackWebhookUrl, notifySlack, approvalsStore, resultChecks: config.resultChecks });
@@ -72,6 +72,7 @@ async function main() {
       pendingApprovals: await executor.listPending(),
       // Say plainly whether a restart loses parked approvals and queued work.
       durableState: state.durable,
+      degradedReason: state.degradedReason,
       triage: { queued: (await jobs.list(QUEUED)).length, running: (await jobs.list(RUNNING)).length },
     });
   });
