@@ -133,3 +133,21 @@ test("a job with no actions offers no buttons", () => {
   assert.deepEqual(pendingApprovalsIn({ result: {} }), []);
   assert.deepEqual(pendingApprovalsIn({}), []);
 });
+
+// --- delivery addressing --------------------------------------------------
+
+test("a teams job carries its own conversation reference", async () => {
+  // It used to live in an in-memory Map, so a pod restart stranded every
+  // in-flight Teams request with no way to reply. Slack never had this
+  // problem: channel and thread ids are already on the job.
+  const { pendingApprovalsIn } = await import("../src/chat/format.js");
+  const job = {
+    id: "j1",
+    source: { type: "teams", ref: { conversation: { id: "19:abc" }, serviceUrl: "https://smba" }, user: "aad-1" },
+    result: { lane: "itsm_ticket", actions: [] },
+  };
+  assert.ok(job.source.ref, "the reference must travel with the job");
+  assert.equal(JSON.parse(JSON.stringify(job.source.ref)).conversation.id, "19:abc",
+    "and must be plain JSON so it survives the job store");
+  assert.deepEqual(pendingApprovalsIn(job), []);
+});

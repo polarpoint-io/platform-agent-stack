@@ -29,9 +29,6 @@ import { summariseJob, pendingApprovalsIn } from "./format.js";
 export function createTeamsAdapter({ config, deps }) {
   const { jobs, executor } = deps;
   let adapter = null;
-  // Teams replies need the original conversation reference, and it arrives on
-  // the inbound activity rather than being reconstructable from ids.
-  const conversations = new Map();
 
   return {
     name: "teams",
@@ -69,12 +66,20 @@ export function createTeamsAdapter({ config, deps }) {
             .trim();
           if (!text) return;
 
-          const ref = TurnContext.getConversationReference(context.activity);
+          // The conversation reference goes ON THE JOB, not in a local Map.
+          // Teams replies are impossible without it and it cannot be
+          // reconstructed from ids, so holding it in memory meant a pod
+          // restart silently stranded every in-flight Teams request. It is
+          // plain JSON, so it rides along with the job and survives whatever
+          // the job store survives.
           const id = await jobs.enqueue({
             text,
-            source: { type: "teams", conversationId: ref.conversation.id, user: context.activity.from?.id },
+            source: {
+              type: "teams",
+              ref: TurnContext.getConversationReference(context.activity),
+              user: context.activity.from?.id,
+            },
           });
-          conversations.set(ref.conversation.id, ref);
 
           // Same honest ack as Slack: queued, not done. The Bot Framework's
           // own 200 has already gone back inside its timeout.
@@ -88,11 +93,11 @@ export function createTeamsAdapter({ config, deps }) {
 
     async deliver(job) {
       if (job.source?.type !== "teams" || !adapter) return;
-      const ref = conversations.get(job.source.conversationId);
+      const ref = job.source.ref;
       if (!ref) {
-        // Lost on restart, because conversation references are in memory. A
-        // durable store would fix it; saying so beats a silent drop.
-        console.warn(`[chat/teams] no conversation reference for ${job.id} - cannot deliver`);
+        // Only reachable for a job queued by an older build, before the
+        // reference was carried on the job.
+        console.warn(`[chat/teams] job ${job.id} has no conversation reference - cannot deliver`);
         return;
       }
 
