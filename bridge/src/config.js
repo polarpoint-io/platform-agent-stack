@@ -80,7 +80,7 @@ export function loadConfig() {
     holmesRunbookMcpUrl: process.env.HOLMES_RUNBOOK_MCP_URL,
     slackWebhookUrl: process.env.SLACK_WEBHOOK_URL || "",
     // Pending tier-3 approvals are MongoDB-backed when set, in-memory
-    // otherwise - see approvalsStore.js.
+    // otherwise - see stateStore.js.
     mongoUri: process.env.MONGO_URI || "",
     port: parseInt(process.env.PORT || "3000", 10),
   };

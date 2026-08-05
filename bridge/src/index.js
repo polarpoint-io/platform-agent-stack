@@ -9,7 +9,8 @@ import { loadConfig } from "./config.js";
 import { Policy, assertVerbsResolve } from "./policy.js";
 import { BackendRegistry } from "./mcpBackends.js";
 import { createExecutor } from "./executor.js";
-import { createApprovalsStore } from "./approvalsStore.js";
+import { createStateStore } from "./stateStore.js";
+import { createJobs, startWorker, QUEUED, RUNNING } from "./jobs.js";
 import { notifySlack } from "./notify.js";
 import { classify } from "./llm.js";
 import { handleInfraRequest } from "./sreAgent.js";
@@ -23,8 +24,40 @@ async function main() {
   // Say so at boot if any verb points at a tool its backend does not have.
   assertVerbsResolve(policy, backends);
 
-  const approvalsStore = createApprovalsStore(config.mongoUri);
+  const state = createStateStore(config.mongoUri);
+  const approvalsStore = state.approvals;
+  const jobs = createJobs(state.jobs);
   const executor = createExecutor({ policy, backends, slackWebhookUrl: config.slackWebhookUrl, notifySlack, approvalsStore, resultChecks: config.resultChecks });
+
+  // Anything left RUNNING belongs to a worker that died. Requeue before
+  // starting our own, or those jobs are lost silently.
+  await jobs.requeueStale();
+
+  // The work a queued /triage actually does - the same routing the endpoint
+  // used to do inline.
+  async function runTriage({ text }) {
+    const lane = await classify(config.llmProvider, text);
+    if (lane === "infra_incident") {
+      return { lane, ...(await handleInfraRequest({ holmesUrl: config.holmesUrl, executor, text })) };
+    }
+    if (lane === "itsm_ticket") {
+      return { lane, ...(await handleItsmRequest({ llmProvider: config.llmProvider, actionMappings: config.actionMappings, executor, policy, backends, text })) };
+    }
+    return { lane: "unknown", reply: "Could not classify this request as an infra incident or an ITSM ticket." };
+  }
+
+  const worker = startWorker({
+    jobs,
+    handle: (job) => runTriage({ text: job.text }),
+    onResult: async (job) => {
+      // Where a completed job gets delivered back to whoever asked. Slack
+      // Socket Mode plugs in here; until then a job's result is read from
+      // GET /triage/:id.
+      if (job.source) {
+        console.log(`[jobs] ${job.id} ${job.status} for source ${job.source.type || "unknown"}`);
+      }
+    },
+  });
 
   const app = express();
   app.use(express.json({ limit: "1mb" }));
@@ -37,29 +70,55 @@ async function main() {
       backends: backends.status(),
       itsmProvider: config.actionMappings?.provider || null,
       pendingApprovals: await executor.listPending(),
+      // Say plainly whether a restart loses parked approvals and queued work.
+      durableState: state.durable,
+      triage: { queued: (await jobs.list(QUEUED)).length, running: (await jobs.list(RUNNING)).length },
     });
   });
 
-  // The single front door. triage-router classifies, then hands off.
+  // The single front door. Accepts and queues; triage-router classifies and
+  // hands off on a worker.
+  //
+  // 202 rather than the answer, because the answer takes too long to be an
+  // HTTP response to a chat platform: Slack and Teams both want an ack inside
+  // 3 seconds, and the infra lane runs ~29s. Poll GET /triage/:id, or let the
+  // source adapter deliver the result.
+  //
+  // ?wait=true keeps the old synchronous behaviour for a CLI or a curl - handy
+  // for testing a lane end to end, useless for a bot.
   app.post("/triage", async (req, res) => {
     const text = req.body?.text;
     if (!text) return res.status(400).json({ error: "body.text is required" });
 
-    try {
-      const lane = await classify(config.llmProvider, text);
-      if (lane === "infra_incident") {
-        const result = await handleInfraRequest({ holmesUrl: config.holmesUrl, executor, text });
-        return res.json({ lane, ...result });
+    if (req.query.wait === "true") {
+      try {
+        return res.json(await runTriage({ text }));
+      } catch (err) {
+        console.error(`[triage] ${err.stack}`);
+        return res.status(502).json({ error: err.message });
       }
-      if (lane === "itsm_ticket") {
-        const result = await handleItsmRequest({ llmProvider: config.llmProvider, actionMappings: config.actionMappings, executor, policy, backends, text });
-        return res.json({ lane, ...result });
-      }
-      return res.json({ lane: "unknown", reply: "Could not classify this request as an infra incident or an ITSM ticket." });
-    } catch (err) {
-      console.error(`[triage] ${err.stack}`);
-      res.status(502).json({ error: err.message });
     }
+
+    try {
+      const id = await jobs.enqueue({ text, source: req.body?.source || null });
+      res.status(202).json({ id, status: QUEUED, poll: `/triage/${id}` });
+    } catch (err) {
+      console.error(`[triage] could not enqueue: ${err.stack}`);
+      res.status(503).json({ error: `could not accept the request: ${err.message}` });
+    }
+  });
+
+  app.get("/triage/:id", async (req, res) => {
+    const job = await jobs.get(req.params.id);
+    if (!job) return res.status(404).json({ error: `no triage job with id ${req.params.id}` });
+    res.json(job);
+  });
+
+  app.get("/triage", async (_req, res) => {
+    res.json({
+      queued: (await jobs.list(QUEUED)).length,
+      running: (await jobs.list(RUNNING)).length,
+    });
   });
 
   // Direct, ungated-by-classification calls for a specific verb -
@@ -99,9 +158,22 @@ async function main() {
     }
   });
 
-  app.listen(config.port, "0.0.0.0", () => {
+  const server = app.listen(config.port, "0.0.0.0", () => {
     console.log(`platform-agent-bridge listening on 0.0.0.0:${config.port}`);
   });
+
+  // Stop taking new jobs and let the in-flight one finish rather than being
+  // killed mid tool-call. A job cut off after its backend call has landed is
+  // the ambiguous case we can't safely retry, so it's worth avoiding.
+  for (const signal of ["SIGTERM", "SIGINT"]) {
+    process.on(signal, async () => {
+      console.log(`[shutdown] ${signal} - draining`);
+      worker.stop();
+      server.close();
+      await state.close();
+      process.exit(0);
+    });
+  }
 }
 
 main().catch((err) => {
