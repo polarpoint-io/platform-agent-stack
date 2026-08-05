@@ -6,7 +6,7 @@
 
 import express from "express";
 import { loadConfig } from "./config.js";
-import { Policy } from "./policy.js";
+import { Policy, assertVerbsResolve } from "./policy.js";
 import { BackendRegistry } from "./mcpBackends.js";
 import { createExecutor } from "./executor.js";
 import { createApprovalsStore } from "./approvalsStore.js";
@@ -20,6 +20,9 @@ async function main() {
   const policy = new Policy({ riskTiers: config.riskTiers, actionMappings: config.actionMappings });
   const backends = new BackendRegistry();
   await backends.connectAll({ mcpServers: config.mcpServers, holmesRunbookMcpUrl: config.holmesRunbookMcpUrl });
+  // Say so at boot if any verb points at a tool its backend does not have.
+  assertVerbsResolve(policy, backends);
+
   const approvalsStore = createApprovalsStore(config.mongoUri);
   const executor = createExecutor({ policy, backends, slackWebhookUrl: config.slackWebhookUrl, notifySlack, approvalsStore, resultChecks: config.resultChecks });
 

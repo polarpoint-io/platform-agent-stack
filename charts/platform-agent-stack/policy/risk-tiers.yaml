@@ -24,8 +24,10 @@ risk_tiers:
       - list_kb_articles
       - runbook_search
       - runbook_get
-      - runbook_gap_detect   # read-only analysis; reports missing runbook
-                             # coverage, writes nothing
+      # NOTE: runbook_gap_detect was listed here and holmesgpt-runbook-mcp
+      # has never exposed such a tool - verified against its live tools/list
+      # on 2026-08-05. Removed rather than left as an aspiration: a tiered
+      # verb nothing implements looks supported and silently isn't.
       - root_cause_analyse
       - investigation_classify
 

@@ -10,7 +10,7 @@ llmProvider: anthropic
 image:
   # Built and pushed by .github/workflows/build-bridge-image.yml from bridge/.
   repository: ghcr.io/polarpoint-io/platform-agent-bridge
-  tag: "0.2.3"
+  tag: "0.2.4"
   pullPolicy: IfNotPresent
 
 replicaCount: 1
@@ -28,23 +28,29 @@ networkPolicy:
 
 # HolmesGPT's Service. Endpoint called: POST {holmesUrl}/api/chat.
 #
-# KNOWN BROKEN as deployed. Both URLs below are cluster-local DNS, and
-# both Services live on the multitenant cluster, but this chart is
-# deployed to tooling - so neither resolves. mcpBackends.connectAll() is
-# best-effort per backend, so this does not crash the bridge: runbook_mcp
-# logs "fetch failed" at boot, every runbook verb reports "not
-# connected", and sreAgent.js has nothing to relay to. The Freshservice
-# ITSM lane is unaffected.
+# Both URLs below are cluster-local DNS, so this chart has to be deployed
+# to the SAME cluster as HolmesGPT - multitenant, via
+# argocd-tooling-applications' non-prod-multitenant descriptor. Confirmed
+# working end to end 2026-08-05: /triage classifies an infra request,
+# sreAgent relays to Holmes, and Holmes investigates the live cluster.
 #
-# Not fixed by pointing these somewhere else - there is currently no
-# workload home for the multitenant cluster (foundational is baseline
-# only). Closing it needs either a routable address for both Services or
-# the two co-located, both of which land with the argocd-applications
-# repo consolidation.
+# Deployed anywhere else these resolve to nothing and the SRE lane dies
+# quietly - mcpBackends.connectAll() is best-effort per backend, so the
+# bridge starts happily with runbook_mcp reporting "fetch failed" and
+# every runbook verb unavailable. Check /status after moving it.
 holmesUrl: "http://holmes-non-prod-multitenant-holmes.holmesgpt.svc:80"
 
 # holmesgpt-runbook-mcp's Service.
 holmesRunbookMcpUrl: "http://holmesgpt-runbook-mcp.holmesgpt.svc.cluster.local:8080/mcp"
+
+# That server reports Confluence failures as SUCCESSFUL tool results -
+# isError false, with {"error": "Confluence search failed: ..."} as the
+# payload - so runbook_search and root_cause_analyse returned HTTP 200 and
+# a healthy-looking tier_1 decision while having found nothing at all.
+# Same shape the Freshservice provider declares; this backend is configured
+# by URL rather than as an mcpServers entry, so it declares it here.
+# Matched only against a bare-string result, see executor.js.
+holmesRunbookMcpResultIsErrorWhen: '^(Error\b|\{\s*"error":)'
 
 # Slack Incoming Webhook for tier_2/tier_3 notifications. Optional - if
 # unset, notifications just get logged instead of posted.

@@ -55,6 +55,14 @@ spec:
               value: {{ .Values.holmesUrl | quote }}
             - name: HOLMES_RUNBOOK_MCP_URL
               value: {{ .Values.holmesRunbookMcpUrl | quote }}
+            {{- if .Values.holmesRunbookMcpResultIsErrorWhen }}
+            # Same quirk the ITSM providers declare in their .mcp.json, but
+            # runbook_mcp is configured by URL rather than as an mcpServers
+            # entry, so it needs its own way to say it. Without this, a
+            # Confluence failure comes back as a healthy tier_1 result.
+            - name: RUNBOOK_MCP_RESULT_IS_ERROR_WHEN
+              value: {{ .Values.holmesRunbookMcpResultIsErrorWhen | quote }}
+            {{- end }}
             {{- if .Values.slackWebhookUrl }}
             - name: SLACK_WEBHOOK_URL
               value: {{ .Values.slackWebhookUrl | quote }}

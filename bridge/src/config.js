@@ -52,14 +52,22 @@ export function loadConfig() {
   // resultIsErrorWhen. Compiled once here; executor.js applies them.
   // Kept out of the generic path deliberately - see executor.js.
   const resultChecks = {};
-  for (const [name, def] of Object.entries(mcp.mcpServers || {})) {
-    if (!def?.resultIsErrorWhen) continue;
+  const compile = (name, pattern) => {
+    if (!pattern) return;
     try {
-      resultChecks[name] = new RegExp(def.resultIsErrorWhen);
+      resultChecks[name] = new RegExp(pattern);
     } catch (err) {
       console.error(`[config] ignoring invalid resultIsErrorWhen for "${name}": ${err.message}`);
     }
+  };
+  for (const [name, def] of Object.entries(mcp.mcpServers || {})) {
+    compile(name, def?.resultIsErrorWhen);
   }
+  // runbook_mcp isn't in .mcp.json - it's an http backend configured by URL -
+  // so it had no way to declare this and its failures came back as successes.
+  // holmesgpt-runbook-mcp returns {"error": ...} with isError false when a
+  // Confluence query fails, which read as a healthy tier_1 result.
+  compile("runbook_mcp", process.env.RUNBOOK_MCP_RESULT_IS_ERROR_WHEN);
 
   return {
     swarm,

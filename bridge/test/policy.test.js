@@ -105,3 +105,58 @@ test("no verb appears in more than one tier (risk-tiers.yaml itself)", () => {
     }
   }
 });
+
+// --- DIRECT_VERBS vs the backend's real tool list ---------------------
+// runbook_gap_detect sat in DIRECT_VERBS and in tier_1 while
+// holmesgpt-runbook-mcp has never exposed a tool by that name, so a tiered
+// verb looked supported and could never run. assertVerbsResolve turns that
+// into a boot-time warning instead of a call-time mystery.
+
+import { assertVerbsResolve, DIRECT_VERBS } from "../src/policy.js";
+
+function backendsWithTools(names) {
+  const tools = names.map((n) => ({ name: n }));
+  return { get: (n) => (n === "runbook_mcp" ? { ready: true, tools } : undefined) };
+}
+
+test("DIRECT_VERBS matches what holmesgpt-runbook-mcp actually exposes", () => {
+  // Verified against a live tools/list, 1.1.2, 2026-08-05.
+  const live = ["runbook_search", "runbook_get", "investigation_classify",
+                "runbook_draft", "root_cause_analyse"];
+  assert.deepEqual([...DIRECT_VERBS].sort(), [...live].sort());
+  assert.ok(!DIRECT_VERBS.has("runbook_gap_detect"), "no tool by that name exists");
+});
+
+test("a verb resolving to a tool the backend lacks is reported at boot", () => {
+  const policy = new Policy({
+    riskTiers: { default_policy: { unlisted_action: "tier_4_draft_only" },
+                 risk_tiers: { tier_1_auto: { actions: ["runbook_search"] } } },
+    actionMappings: { provider: "stub", actions: {} },
+  });
+  const msgs = [];
+  const problems = assertVerbsResolve(policy, backendsWithTools(["runbook_get"]), (m) => msgs.push(m));
+  assert.ok(problems.some((p) => p.includes("runbook_search")));
+  assert.ok(msgs.length === 1 && /does not expose/.test(msgs[0]));
+});
+
+test("no warning when every verb resolves", () => {
+  const policy = new Policy({
+    riskTiers: { default_policy: { unlisted_action: "tier_4_draft_only" },
+                 risk_tiers: { tier_1_auto: { actions: ["runbook_search"] } } },
+    actionMappings: { provider: "stub", actions: {} },
+  });
+  const msgs = [];
+  const problems = assertVerbsResolve(policy, backendsWithTools([...DIRECT_VERBS]), (m) => msgs.push(m));
+  assert.deepEqual(problems, []);
+  assert.equal(msgs.length, 0);
+});
+
+test("a disconnected backend is not reported as a missing tool", () => {
+  const policy = new Policy({
+    riskTiers: { default_policy: { unlisted_action: "tier_4_draft_only" },
+                 risk_tiers: { tier_1_auto: { actions: ["runbook_search"] } } },
+    actionMappings: { provider: "stub", actions: {} },
+  });
+  const problems = assertVerbsResolve(policy, { get: () => ({ ready: false, tools: [] }) }, () => {});
+  assert.deepEqual(problems, [], "not connected is a different problem, logged elsewhere");
+});
