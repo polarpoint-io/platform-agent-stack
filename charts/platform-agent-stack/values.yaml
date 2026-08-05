@@ -10,7 +10,7 @@ llmProvider: anthropic
 image:
   # Built and pushed by .github/workflows/build-bridge-image.yml from bridge/.
   repository: ghcr.io/polarpoint-io/platform-agent-bridge
-  tag: "0.3.2"
+  tag: "0.4.0"
   pullPolicy: IfNotPresent
 
 # Per-tool-call timeout for MCP requests. The SDK default of 60s is too
@@ -57,8 +57,30 @@ holmesRunbookMcpUrl: "http://holmesgpt-runbook-mcp.holmesgpt.svc.cluster.local:8
 holmesRunbookMcpResultIsErrorWhen: '^(Error\b|\{\s*"error":)'
 
 # Slack Incoming Webhook for tier_2/tier_3 notifications. Optional - if
-# unset, notifications just get logged instead of posted.
+# unset, notifications just get logged instead of posted. Separate from the
+# `chat` front door below: this is one-way outbound, that is conversational.
 slackWebhookUrl: ""
+
+# The chat front door. none | slack | teams.
+#
+# none  - /triage is HTTP only. Nothing delivers requests to it, which is the
+#         default and is honest about it.
+# slack - Socket Mode. Dials OUT over a WebSocket, so it needs no ingress and
+#         no public DNS. The right choice on this estate, where every hostname
+#         is tailnet-only.
+# teams - Bot Framework. Has no Socket Mode equivalent and needs a PUBLIC
+#         HTTPS endpoint for /api/messages, which this estate does not have.
+#         Read the header of bridge/src/chat/teams.js before choosing it.
+#
+# Tokens come from ESO like every other credential - add a `chat` entry to
+# externalSecrets.keys with the properties the chosen provider needs.
+chat:
+  provider: none
+  # Slack usernames/ids, or Teams AAD object ids, allowed to release a tier-3
+  # action. EMPTY MEANS NOBODY. Approving is the one thing that must never
+  # default open - until this existed, the only approval path was an
+  # unauthenticated POST with a UUID.
+  approvers: []
 
 # External Secrets Operator. Nothing secret is committed to this repo;
 # the chart only names where to find it.

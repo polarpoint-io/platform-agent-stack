@@ -15,6 +15,7 @@ import { notifySlack } from "./notify.js";
 import { classify } from "./llm.js";
 import { handleInfraRequest } from "./sreAgent.js";
 import { handleItsmRequest } from "./itsmAgent.js";
+import { createChatAdapter } from "./chat/index.js";
 
 async function main() {
   const config = loadConfig();
@@ -48,6 +49,12 @@ async function main() {
     return { lane: "unknown", reply: "Could not classify this request as an infra incident or an ITSM ticket." };
   }
 
+  const chat = createChatAdapter({
+    provider: config.chat.provider,
+    config: config.chat,
+    deps: { jobs, executor },
+  });
+
   const worker = startWorker({
     jobs,
     handle: (job) => runTriage({ text: job.text }),
@@ -55,9 +62,14 @@ async function main() {
       // Where a completed job gets delivered back to whoever asked. Slack
       // Socket Mode plugs in here; until then a job's result is read from
       // GET /triage/:id.
-      if (job.source) {
-        console.log(`[jobs] ${job.id} ${job.status} for source ${job.source.type || "unknown"}`);
-      }
+      if (!job.source) return;
+      console.log(`[jobs] ${job.id} ${job.status} for source ${job.source.type || "unknown"}`);
+      // Hand the finished job to whichever front door asked for it. Failures
+      // are delivered too - a chat client showing nothing is worse than one
+      // showing an error.
+      await chat?.deliver?.(job).catch((e) =>
+        console.error(`[chat] could not deliver ${job.id}: ${e.message}`)
+      );
     },
   });
 
@@ -161,6 +173,13 @@ async function main() {
     }
   });
 
+  // After the routes are defined, because an adapter that needs an inbound
+  // endpoint (Teams) registers one here. Slack's Socket Mode ignores the app.
+  if (chat) {
+    await chat.start({ app });
+    console.log(`[chat] ${chat.name} front door active`);
+  }
+
   const server = app.listen(config.port, "0.0.0.0", () => {
     console.log(`platform-agent-bridge listening on 0.0.0.0:${config.port}`);
   });
@@ -172,6 +191,7 @@ async function main() {
     process.on(signal, async () => {
       console.log(`[shutdown] ${signal} - draining`);
       worker.stop();
+      await chat?.stop?.().catch(() => {});
       server.close();
       await state.close();
       process.exit(0);

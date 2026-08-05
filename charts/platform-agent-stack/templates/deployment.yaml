@@ -65,6 +65,12 @@ spec:
             - name: MONGO_HOST_OVERRIDE
               value: "{{ include "platform-agent-stack.fullname" . }}-mongo-egress:27017"
             {{- end }}
+            {{- if ne .Values.chat.provider "none" }}
+            - name: CHAT_PROVIDER
+              value: {{ .Values.chat.provider | quote }}
+            - name: CHAT_APPROVERS
+              value: {{ join "," .Values.chat.approvers | quote }}
+            {{- end }}
             - name: HOLMES_URL
               value: {{ .Values.holmesUrl | quote }}
             - name: HOLMES_RUNBOOK_MCP_URL

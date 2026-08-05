@@ -85,6 +85,25 @@ export function loadConfig() {
     // Set when the database is reached through a proxy rather than at the
     // address baked into the connection secret - see rewriteMongoHost().
     mongoHostOverride: process.env.MONGO_HOST_OVERRIDE || "",
+    // Chat front door. "none" (default), "slack" or "teams" - see chat/index.js
+    // for why the platform is a deployment choice rather than something the
+    // agents or the policy know about.
+    chat: {
+      provider: (process.env.CHAT_PROVIDER || "none").toLowerCase().trim(),
+      // Slack (Socket Mode)
+      appToken: process.env.SLACK_APP_TOKEN || "",
+      botToken: process.env.SLACK_BOT_TOKEN || "",
+      // Teams (Bot Framework)
+      appId: process.env.MICROSOFT_APP_ID || "",
+      appPassword: process.env.MICROSOFT_APP_PASSWORD || "",
+      tenantId: process.env.MICROSOFT_APP_TENANT_ID || "",
+      appType: process.env.MICROSOFT_APP_TYPE || "SingleTenant",
+      // Who may release a tier-3 action. EMPTY MEANS NOBODY, matching the
+      // NetworkPolicy's treatment of an empty peer list - approving is the one
+      // thing that should never default open.
+      approvers: (process.env.CHAT_APPROVERS || "")
+        .split(",").map((s) => s.trim()).filter(Boolean),
+    },
     port: parseInt(process.env.PORT || "3000", 10),
   };
 }
