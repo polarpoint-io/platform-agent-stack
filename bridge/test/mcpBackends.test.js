@@ -140,3 +140,30 @@ test("status reports a dropped backend honestly", async () => {
   backend.ready = false; // what a failed reconnect leaves behind
   assert.equal(r.status().stub.ready, false, "/status must not claim ready when it isn't");
 });
+
+// --- timeouts -------------------------------------------------------------
+// runbook_draft generates a runbook with an LLM and opens a PR. At the SDK's
+// 60s default it timed out having ALREADY created the PR: the caller saw a
+// failure for an action that succeeded, and no tier_2 notification fired.
+
+test("a timeout is never retried", () => {
+  // Ambiguous by nature - the call may have completed. Retrying could open a
+  // second PR or post a second ticket comment.
+  assert.ok(!isRetryable(new Error("MCP error -32001: Request timed out")));
+  assert.ok(!isRetryable(new Error("Request timed out")));
+});
+
+test("the tool timeout is configurable and generous by default", async () => {
+  // Asserted through behaviour: the options object reaches the SDK call.
+  const b = new Backend("stub");
+  let seen = null;
+  b._open = () => ({});
+  b._connect = async () => {
+    b.client = { async callTool(_p, _s, opts) { seen = opts; return { isError: false }; }, async close() {} };
+    b.ready = true;
+  };
+  await b._connect();
+  await b.callTool("t", {});
+  assert.ok(seen && typeof seen.timeout === "number", "a timeout must be passed explicitly");
+  assert.ok(seen.timeout >= 120000, `expected a generous default, got ${seen.timeout}`);
+});

@@ -30,6 +30,18 @@ export function isRetryable(err) {
   return RETRYABLE.some((re) => re.test(msg));
 }
 
+// The SDK defaults to a 60s request timeout, which is far too short for the
+// tools that call an LLM and then a git forge. runbook_draft generates a whole
+// runbook and opens a PR; it timed out at 60s having ALREADY created the PR, so
+// the caller was told the action failed when it had succeeded - no tier_2
+// notification fired, and a real write went unrecorded.
+//
+// Note a timeout is deliberately absent from RETRYABLE above. It's ambiguous by
+// nature: the call may have completed, so retrying it could open a second PR or
+// write a second ticket comment. Better to report it and let a human look.
+const CALL_TIMEOUT_MS = parseInt(process.env.MCP_TOOL_TIMEOUT_MS || "180000", 10);
+const CALL_OPTIONS = { timeout: CALL_TIMEOUT_MS };
+
 export class Backend {
   constructor(name) {
     this.name = name;
@@ -95,7 +107,7 @@ export class Backend {
     }
 
     try {
-      return await this.client.callTool({ name, arguments: args || {} });
+      return await this.client.callTool({ name, arguments: args || {} }, undefined, CALL_OPTIONS);
     } catch (err) {
       if (!isRetryable(err)) {
         throw err;
