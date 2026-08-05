@@ -58,3 +58,18 @@ should still fail loudly at render rather than 404 deep in a pod's logs.
 {{- fail (printf "llmProvider=%q but %s is missing from the chart. Rename llm-providers/modelplane.yaml.example to modelplane.yaml, or add a file for your backend." $p $f) -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Name of the tailnet egress Service.
+
+Deliberately NOT fullname-prefixed. The release name here is already 41
+characters (platform-agent-stack-non-prod-multitenant), fullname is 62, and a
+Service name is a DNS label capped at 63 - so any suffix overflows and the
+sync fails with "metadata.name: Invalid value". ConfigMaps and Secrets in this
+chart carry longer suffixes safely because those allow 253.
+
+Short and namespaced instead. Override if two releases ever share a namespace.
+*/}}
+{{- define "platform-agent-stack.mongoEgressName" -}}
+{{- .Values.mongoState.egressServiceName | default "mongo-egress" | trunc 63 | trimSuffix "-" -}}
+{{- end -}}

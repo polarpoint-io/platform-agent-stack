@@ -63,7 +63,7 @@ spec:
             # replica-set discovery would send it back to the unreachable
             # internal names.
             - name: MONGO_HOST_OVERRIDE
-              value: "{{ include "platform-agent-stack.fullname" . }}-mongo-egress:27017"
+              value: "{{ include "platform-agent-stack.mongoEgressName" . }}:27017"
             {{- end }}
             {{- if ne .Values.chat.provider "none" }}
             - name: CHAT_PROVIDER

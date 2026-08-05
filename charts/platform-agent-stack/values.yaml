@@ -163,3 +163,6 @@ mongoState:
   # address inside the connection secret only resolves on controller.
   # Leave empty when the database is in the same cluster.
   tailnetFqdn: ""
+  # Name of the local egress Service. Short on purpose: a Service name is a
+  # DNS label capped at 63 chars and this chart's fullname is already 62.
+  egressServiceName: mongo-egress
