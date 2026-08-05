@@ -20,4 +20,15 @@ metadata:
 spec:
   externalName: placeholder  # replaced by the operator
   type: ExternalName
+  # Ports are load-bearing here even though Kubernetes ignores them on an
+  # ExternalName Service. The tailscale proxy runs in userspace mode and only
+  # forwards ports it has been told about, and it reads them from here.
+  # Without this the name resolves, the proxy is Running, and every connection
+  # is refused - which looks like the tailnet path is broken when it is only
+  # unconfigured.
+  ports:
+    - name: mongodb
+      port: {{ .Values.mongoState.port | default 27017 }}
+      targetPort: {{ .Values.mongoState.port | default 27017 }}
+      protocol: TCP
 {{- end }}
