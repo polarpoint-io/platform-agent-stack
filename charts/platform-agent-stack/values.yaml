@@ -126,8 +126,12 @@ mongoState:
   #   kubectl get secret tooling-mongostate-reader-token -n crossplane-system -o jsonpath='{.data.token}' | base64 -d
   #   (on the TOOLING cluster) kubectl create secret generic controller-mongostate-reader-token -n agents --from-literal=token=<pasted value>
   tokenSecretName: controller-mongostate-reader-token
-  # The MongoState claim's connection secret - name and namespace on
-  # controller (writeConnectionSecretToRef.name in mongostate-crossplane's
-  # examples/claim.yaml; namespace is that repo's writeConnectionSecretsToNamespace).
+  # The MongoState claim's connection secret.
+  #
+  # The namespace is `agents`, NOT crossplane-system. Crossplane writes a
+  # claim's connection secret into the CLAIM's own namespace when
+  # writeConnectionSecretToRef carries only a name, and that claim sets only a
+  # name. Getting this wrong reads the wrong namespace and ESO reports a bare
+  # "could not get secret data from provider" that says nothing about why.
   remoteSecretName: agent-swarm-state
-  remoteSecretNamespace: crossplane-system
+  remoteSecretNamespace: agents
