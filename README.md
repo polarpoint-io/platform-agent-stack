@@ -64,12 +64,9 @@ directory within it.
 
 ## Deploying
 
-ArgoCD owns this. The Application is declared in `argocd-core`'s
-environment values file — `<env>-aoa-values.yaml`, under the `tooling`
-project's `applications:` list — and rendered by the `argocd-app-of-apps`
-chart. There is no per-app descriptor file and no parent Application: an
-earlier scheme had a parent whose rendered output was more Application
-specs, which meant every change took two syncs.
+ArgoCD owns this. The Application is declared in `argocd-core`'s environment
+values file — `<env>-aoa-values.yaml`, under the `tooling` project's
+`applications:` list — and rendered by the `argocd-app-of-apps` chart.
 
 Credentials come from External Secrets Operator. The chart names the
 remote keys; it never holds a value. Set `externalSecrets.secretStoreRef`
@@ -82,11 +79,17 @@ helm template pas charts/platform-agent-stack --values charts/platform-agent-sta
 ./charts/platform-agent-stack/scripts/validate-config.sh
 ```
 
-The chart refuses to render if `itsmProvider` has no provider file, a
-provider file but no action mapping, `image.tag` isn't a plain semver,
-or `networkPolicy.enabled=false`/`service.type` isn't `ClusterIP`. Those
-last two are not fussiness: the bridge authenticates nothing, so the
-NetworkPolicy is the entire access control.
+The chart refuses to render if `itsmProvider` has no provider file, a provider
+file but no action mapping, `image.tag` isn't a plain semver, or
+`networkPolicy.enabled=false`/`service.type` isn't `ClusterIP`. Those last two
+are not fussiness: the bridge authenticates nothing, so the NetworkPolicy is the
+entire access control.
+
+Bumping the bridge is a two-part change. CI tags the image from
+`bridge/package.json`'s `version`, so a code change without a version bump
+overwrites the existing tag in place — and with `pullPolicy: IfNotPresent` the
+nodes keep the cached layer. Bump that version **and** `image.tag` in the chart
+together.
 
 ## Swapping the ITSM backend
 
