@@ -1,0 +1,63 @@
+# Slack app manifest for the platform agent bridge.
+#
+# Create it at https://api.slack.com/apps -> Create New App -> From an app
+# manifest -> pick the workspace -> paste this.
+#
+# Everything here is derived from what bridge/src/chat/slack.js actually calls,
+# not from a generic template:
+#   app.event("app_mention")     -> app_mentions:read + the app_mention event
+#   client.reactions.add         -> reactions:write
+#   client.chat.postMessage      -> chat:write
+#   client.chat.postEphemeral    -> chat:write
+#   app.action(/^approve:/)      -> interactivity must be enabled
+#
+# Socket Mode is the point: it dials OUT over a WebSocket, so Slack never needs
+# to reach this estate. Nothing here is publicly resolvable - every vanity name
+# is on the tailnet - so the Events API, which needs a public HTTPS endpoint for
+# Slack to POST to, is not an option.
+display_information:
+  name: Platform Agent
+  description: Triage, runbooks and approvals for the platform estate
+  background_color: "#2b2d31"
+  long_description: >-
+    Mention the bot in a channel to raise a triage request. Work is queued and
+    answered in-thread. Actions that need a human get an Approve button, which
+    only members of the approver allowlist can press - the bridge checks the
+    Slack user id server-side and refuses anyone else, so the button being
+    visible is not the same as it being usable.
+
+features:
+  bot_user:
+    display_name: platform-agent
+    # The bridge only ever replies to a mention or to its own thread. It has no
+    # reason to appear online as a person.
+    always_online: false
+
+oauth_config:
+  scopes:
+    bot:
+      # Receive the mention that starts a job.
+      - app_mentions:read
+      # Post job results in-thread, and the ephemeral refusal when a
+      # non-approver presses Approve.
+      - chat:write
+      # The "eyes" reaction that acknowledges a queued job. Bolt has already
+      # acked the socket envelope by then; this is the acknowledgement a human
+      # can actually see.
+      - reactions:write
+      # Not required for app_mention delivery. Add only if the bot later needs
+      # to read surrounding messages for context:
+      # - channels:history
+      # - groups:history
+
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+  interactivity:
+    # Required. Without it the Approve button renders but its action never
+    # reaches app.action(/^approve:/), so approvals silently do nothing.
+    is_enabled: true
+  socket_mode_enabled: true
+  org_deploy_enabled: false
+  token_rotation_enabled: false
