@@ -45,15 +45,25 @@ oauth_config:
       # acked the socket envelope by then; this is the acknowledgement a human
       # can actually see.
       - reactions:write
-      # Not required for app_mention delivery. Add only if the bot later needs
-      # to read surrounding messages for context:
-      # - channels:history
+      # Resolve the asker's email so create_ticket has a requester without
+      # having to stop and ask. Freshservice rejects the call without one.
+      - users:read
+      - users:read.email
+      # Read prior turns in a thread, so a follow-up answer means something.
+      # Without these the bot can ask a clarifying question but never receive
+      # the reply - a plain reply raises no app_mention event.
+      - channels:history
+      # Add if the bot is used in private channels too:
       # - groups:history
 
 settings:
   event_subscriptions:
     bot_events:
       - app_mention
+      # Thread replies that do not @mention the bot. The handler ignores
+      # anything outside a thread it has already spoken in, so this does not
+      # make it answer every message in the channel.
+      - message.channels
   interactivity:
     # Required. Without it the Approve button renders but its action never
     # reaches app.action(/^approve:/), so approvals silently do nothing.

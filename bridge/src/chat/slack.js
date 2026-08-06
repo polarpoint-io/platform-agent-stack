@@ -18,9 +18,75 @@
 import { canApprove } from "./index.js";
 import { summariseJob, pendingApprovalsIn } from "./format.js";
 
+// Slack user id -> email. users.info is rate limited (tier 4) and a person's
+// address does not change mid-incident, so resolving it once per process is
+// enough. A miss is cached as null too, otherwise a user whose email is hidden
+// costs an API call on every single message.
+const emailCache = new Map();
+
+async function resolveEmail(client, userId) {
+  if (!userId) return null;
+  if (emailCache.has(userId)) return emailCache.get(userId);
+  let email = null;
+  try {
+    const r = await client.users.info({ user: userId });
+    email = r?.user?.profile?.email || null;
+  } catch (e) {
+    // Almost always missing_scope (users:read.email) or a guest whose profile
+    // is restricted. Not fatal - the agent falls back to asking, which is what
+    // it did before this existed.
+    console.warn(`[chat/slack] could not resolve email for ${userId}: ${e.message}`);
+  }
+  emailCache.set(userId, email);
+  return email;
+}
+
+/**
+ * Prior turns in this thread, oldest first, as "Name: text" lines.
+ *
+ * Without this every mention is a standalone job: the agent asks a clarifying
+ * question, the human answers, and the answer arrives with no idea what it is
+ * answering. That made follow-up questions actively misleading - the bot would
+ * invite a reply it could not act on.
+ */
+async function threadTranscript(client, channel, threadTs, botUserId, excludeTs) {
+  if (!threadTs) return [];
+  try {
+    const r = await client.conversations.replies({ channel, ts: threadTs, limit: 30 });
+    return (r.messages || [])
+      .filter((m) => m.ts !== excludeTs && (m.text || "").trim())
+      .map((m) => {
+        const who = m.user === botUserId || m.bot_id ? "assistant" : "user";
+        return `${who}: ${String(m.text).replace(/<@[^>]+>\s*/g, "").trim()}`;
+      });
+  } catch (e) {
+    // conversations.replies needs channels:history / groups:history. Losing
+    // history degrades to the old single-shot behaviour rather than failing.
+    console.warn(`[chat/slack] no thread history for ${threadTs}: ${e.message}`);
+    return [];
+  }
+}
+
+/** The text the agent actually sees: prior turns, the requester, then the ask. */
+export function composePrompt({ transcript, email, text }) {
+  const parts = [];
+  if (transcript.length) {
+    parts.push("Earlier in this thread:", ...transcript, "");
+  }
+  if (email) {
+    // Named explicitly because Freshservice rejects create_ticket without a
+    // requester, and the person asking in Slack is the requester. Before this
+    // the agent had to stop and ask, every time.
+    parts.push(`The person making this request is ${email}. Use that as the requester email for any ticket.`, "");
+  }
+  parts.push(text);
+  return parts.join("\n");
+}
+
 export function createSlackAdapter({ config, deps }) {
   const { jobs, executor } = deps;
   let app = null;
+  let botUserId = null;
 
   return {
     name: "slack",
@@ -38,24 +104,39 @@ export function createSlackAdapter({ config, deps }) {
         socketMode: true,
       });
 
-      app.event("app_mention", async ({ event, client }) => {
-        // Ignore ourselves and other bots, or a reply can trigger a reply.
-        if (event.bot_id || event.subtype === "bot_message") return;
-
+      // One path for both entry points: an @mention, and a plain reply in a
+      // thread the bot is already part of.
+      const accept = async ({ event, client }) => {
         const text = String(event.text || "").replace(/<@[^>]+>\s*/g, "").trim();
-        if (!text) return;
+        if (!text) return null;
+
+        const threadTs = event.thread_ts || event.ts;
+        const [transcript, email] = await Promise.all([
+          threadTranscript(client, event.channel, event.thread_ts, botUserId, event.ts),
+          resolveEmail(client, event.user),
+        ]);
 
         const id = await jobs.enqueue({
-          text,
+          text: composePrompt({ transcript, email, text }),
           source: {
             type: "slack",
             channel: event.channel,
             // Reply in-thread. Answering in-channel turns a busy incident
             // channel into a wall of agent output.
-            threadTs: event.thread_ts || event.ts,
+            threadTs,
             user: event.user,
+            userEmail: email,
           },
         });
+        return id;
+      };
+
+      app.event("app_mention", async ({ event, client }) => {
+        // Ignore ourselves and other bots, or a reply can trigger a reply.
+        if (event.bot_id || event.subtype === "bot_message") return;
+
+        const id = await accept({ event, client });
+        if (!id) return;
 
         // The visible ack. Bolt has already acknowledged the socket envelope
         // within Slack's 3s window; this tells the human, honestly, that the
@@ -63,6 +144,33 @@ export function createSlackAdapter({ config, deps }) {
         await client.reactions.add({ channel: event.channel, timestamp: event.ts, name: "eyes" })
           .catch((e) => console.warn(`[chat/slack] could not react: ${e.message}`));
         console.log(`[chat/slack] queued ${id} from ${event.user}`);
+      });
+
+      // Plain replies in a thread the bot is already in.
+      //
+      // Without this the bot could ask a clarifying question but never receive
+      // the answer: a reply that does not @mention it raises no app_mention
+      // event, so the reply was invisible and the conversation dead-ended. The
+      // human sees a question and a bot that then ignores them.
+      app.event("message", async ({ event, client }) => {
+        // Never react to ourselves or any other bot - that is an easy loop.
+        if (event.bot_id || event.subtype || event.user === botUserId) return;
+        // Only threads. A channel-level message is not aimed at us.
+        if (!event.thread_ts || event.thread_ts === event.ts) return;
+        // A mention is handled by app_mention; taking it here as well would
+        // queue the same request twice.
+        if (botUserId && String(event.text || "").includes(`<@${botUserId}>`)) return;
+
+        // Only join threads we are already part of. Without this check the bot
+        // would answer every threaded reply in every channel it sits in.
+        const history = await threadTranscript(client, event.channel, event.thread_ts, botUserId, event.ts);
+        if (!history.some((l) => l.startsWith("assistant:"))) return;
+
+        const id = await accept({ event, client });
+        if (!id) return;
+        await client.reactions.add({ channel: event.channel, timestamp: event.ts, name: "eyes" })
+          .catch((e) => console.warn(`[chat/slack] could not react: ${e.message}`));
+        console.log(`[chat/slack] queued ${id} from ${event.user} (thread reply)`);
       });
 
       app.action(/^approve:/, async ({ ack, action, body, client }) => {
@@ -103,7 +211,19 @@ export function createSlackAdapter({ config, deps }) {
       });
 
       await app.start();
-      console.log("[chat/slack] Socket Mode connected");
+
+      // Needed before the message handler can tell our own messages apart from
+      // a human's, and to spot a mention that app_mention will already handle.
+      // If it fails the handler still works, just less precisely: it falls back
+      // to bot_id checks, which cover the loop risk.
+      try {
+        const auth = await app.client.auth.test({ token: config.botToken });
+        botUserId = auth?.user_id || null;
+        console.log(`[chat/slack] Socket Mode connected as ${auth?.user} (${botUserId})`);
+      } catch (e) {
+        console.warn(`[chat/slack] auth.test failed, thread replies may be less precise: ${e.message}`);
+        console.log("[chat/slack] Socket Mode connected");
+      }
     },
 
     /** Called by the worker when a job finishes, success or failure. */

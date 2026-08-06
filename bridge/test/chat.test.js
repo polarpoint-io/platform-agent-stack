@@ -151,3 +151,35 @@ test("a teams job carries its own conversation reference", async () => {
     "and must be plain JSON so it survives the job store");
   assert.deepEqual(pendingApprovalsIn(job), []);
 });
+
+// ---------------------------------------------------------------------------
+// composePrompt - what the agent actually receives from Slack.
+//
+// These exist because the bot used to ask a clarifying question it could never
+// receive an answer to: each mention was a standalone job with no thread
+// history, and a reply without an @mention raised no event at all.
+import { composePrompt } from "../src/chat/slack.js";
+
+test("prior turns are included so a follow-up answer means something", () => {
+  const out = composePrompt({
+    transcript: ["user: raise a ticket about disk pressure", "assistant: which requester?"],
+    email: null,
+    text: "surj@polarpoint.io",
+  });
+  assert.match(out, /Earlier in this thread:/);
+  assert.match(out, /raise a ticket about disk pressure/);
+  assert.match(out, /assistant: which requester\?/);
+  // The new message is last, so it reads as the current ask.
+  assert.ok(out.trimEnd().endsWith("surj@polarpoint.io"));
+});
+
+test("the requester is stated, so create_ticket stops having to ask", () => {
+  const out = composePrompt({ transcript: [], email: "surj@polarpoint.io", text: "raise a ticket" });
+  assert.match(out, /The person making this request is surj@polarpoint\.io/);
+  assert.match(out, /requester email/);
+});
+
+test("a first message with no history and no resolvable email is just the text", () => {
+  const out = composePrompt({ transcript: [], email: null, text: "what is broken" });
+  assert.strictEqual(out, "what is broken");
+});
