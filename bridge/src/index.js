@@ -173,10 +173,39 @@ async function main() {
     }
   });
 
-  // After the routes are defined, because an adapter that needs an inbound
-  // endpoint (Teams) registers one here. Slack's Socket Mode ignores the app.
+  // An adapter that has to be reachable from outside gets its OWN Express app
+  // on its OWN port, and nothing else is ever mounted on it.
+  //
+  // Teams cannot dial out the way Slack's Socket Mode does - the Bot Framework
+  // POSTs to an endpoint you host - so serving it means something public. If
+  // that were this app, the public surface would also include /approvals/:id/
+  // approve, which takes no credentials at all: anyone reaching it could
+  // release a parked tier-3 action. The deny-all NetworkPolicy is the whole of
+  // the access control today, and an Ingress in front of the pod makes it
+  // irrelevant for anything it routes to.
+  //
+  // Splitting the listener is what lets an operator expose exactly one route.
+  // /api/messages can be public because the Bot Framework validates a JWT on
+  // every request; the rest of the bridge cannot.
+  let publicServer = null;
   if (chat) {
-    await chat.start({ app });
+    if (chat.needsPublicEndpoint) {
+      const publicApp = express();
+      publicApp.use(express.json());
+      // A health check so an Ingress or probe has something to hit without
+      // being pointed at the private port.
+      publicApp.get("/health", (_req, res) => res.json({ status: "ok" }));
+      await chat.start({ app: publicApp });
+      publicServer = publicApp.listen(config.publicPort, "0.0.0.0", () => {
+        console.log(
+          `[chat] ${chat.name} inbound endpoint on 0.0.0.0:${config.publicPort} - ` +
+          `expose ONLY this port; ${config.port} has no authentication`
+        );
+      });
+    } else {
+      // Slack dials out. It never needs a route, so it never gets an app.
+      await chat.start();
+    }
     console.log(`[chat] ${chat.name} front door active`);
   }
 
@@ -193,6 +222,7 @@ async function main() {
       worker.stop();
       await chat?.stop?.().catch(() => {});
       server.close();
+      publicServer?.close();
       await state.close();
       process.exit(0);
     });

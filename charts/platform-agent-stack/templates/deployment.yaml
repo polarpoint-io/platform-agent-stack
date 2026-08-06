@@ -23,9 +23,19 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
+            {{- if .Values.chat.endpoint.enabled }}
+            # Only the inbound chat route is served here. Kept apart from http
+            # so an Ingress can be pointed at one without reaching the other.
+            - name: chat
+              containerPort: {{ .Values.chat.endpoint.port }}
+            {{- end }}
           env:
             - name: PORT
               value: "{{ .Values.service.port }}"
+            {{- if .Values.chat.endpoint.enabled }}
+            - name: PUBLIC_PORT
+              value: "{{ .Values.chat.endpoint.port }}"
+            {{- end }}
             # swarm.config.json resolves actionMapping via ${ITSM_PROVIDER}.
             # config.js reads the already-rendered /config/action-mappings.yaml
             # instead, so nothing breaks when this is unset - but the

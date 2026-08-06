@@ -1,0 +1,39 @@
+{{- if .Values.chat.endpoint.enabled }}
+{{/*
+A SEPARATE Service for the inbound chat endpoint, so an Ingress can be pointed
+at exactly one route.
+
+Teams cannot dial out the way Slack's Socket Mode does - the Bot Framework POSTs
+to an endpoint you host - so it needs something publicly reachable. The bridge's
+main port must never be that thing: /triage, /actions and /approvals authenticate
+nothing, and /approvals/:id/approve will execute a parked tier-3 action for
+anybody who can POST to it. The deny-all NetworkPolicy is the entire access
+control, and an Ingress in front of the pod makes that policy irrelevant for
+whatever it routes to.
+
+The bridge therefore serves /api/messages on its own port with nothing else
+mounted, and this Service exposes only that port. Point the Ingress or Funnel
+here - never at the main Service.
+
+That route can be public because the Bot Framework validates a JWT on every
+request. Nothing else in the bridge can say the same.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "platform-agent-stack.fullname" . }}-endpoint
+  labels:
+    {{- include "platform-agent-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chat-endpoint
+  {{- with .Values.chat.endpoint.serviceAnnotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.chat.endpoint.port }}
+      targetPort: chat
+      protocol: TCP
+      name: chat
+  selector: {{- include "platform-agent-stack.selectorLabels" . | nindent 4 }}
+{{- end }}

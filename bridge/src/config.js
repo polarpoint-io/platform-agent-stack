@@ -105,5 +105,13 @@ export function loadConfig() {
         .split(",").map((s) => s.trim()).filter(Boolean),
     },
     port: parseInt(process.env.PORT || "3000", 10),
+    // A SECOND listener, used only by a chat adapter that has to be reachable
+    // from outside (Teams). It is separate from `port` on purpose: everything on
+    // `port` - /triage, /actions, /approvals - authenticates nothing, and the
+    // only thing standing in front of it is a deny-all NetworkPolicy. Exposing
+    // that pod publicly to serve one webhook would put an unauthenticated
+    // "execute this parked tier-3" endpoint on the internet. Nothing but the
+    // adapter's own route is ever registered on this port.
+    publicPort: parseInt(process.env.PUBLIC_PORT || "3979", 10),
   };
 }

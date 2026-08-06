@@ -10,7 +10,7 @@ llmProvider: anthropic
 image:
   # Built and pushed by .github/workflows/build-bridge-image.yml from bridge/.
   repository: ghcr.io/polarpoint-io/platform-agent-bridge
-  tag: "0.5.0"
+  tag: "0.6.0"
   pullPolicy: IfNotPresent
 
 # Per-tool-call timeout for MCP requests. The SDK default of 60s is too
@@ -81,6 +81,23 @@ chat:
   # default open - until this existed, the only approval path was an
   # unauthenticated POST with a UUID.
   approvers: []
+
+  # The inbound endpoint, for a provider that cannot dial out.
+  #
+  # Slack does not need this and must not have it: Socket Mode opens an outbound
+  # WebSocket, so there is nothing to expose. Teams has no equivalent - the Bot
+  # Framework POSTs to an endpoint you host - so it needs one.
+  #
+  # It is a SEPARATE port with only /api/messages on it, served by its own
+  # Service. The bridge's main port authenticates nothing, and
+  # /approvals/:id/approve will run a parked tier-3 action for anyone who can
+  # reach it, so exposing the main port to serve one webhook would put that on
+  # the internet. Point an Ingress or a Tailscale Funnel at the -endpoint
+  # Service, never at the main one.
+  endpoint:
+    enabled: false
+    port: 3979
+    serviceAnnotations: {}
 
 # External Secrets Operator. Nothing secret is committed to this repo;
 # the chart only names where to find it.
