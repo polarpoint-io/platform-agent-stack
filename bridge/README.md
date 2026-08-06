@@ -17,8 +17,12 @@ src/
 ├── executor.js           the one place every tool call passes through: policy.decide()
 │                          first, then act — tier_1 silent, tier_2 execute+notify,
 │                          tier_3 park pending approval, tier_4 never executes
-├── approvalsStore.js       where parked tier_3 approvals live — in-memory, or
-│                            MongoDB-backed when MONGO_URI is set
+├── stateStore.js           parked tier_3 approvals AND queued /triage jobs — in-memory,
+│                            or MongoDB-backed when MONGO_URI is set. Degrades rather
+│                            than crash-looping when Mongo is unreachable
+├── jobs.js                  the /triage queue: enqueue, claim, complete, requeue stale.
+│                             claimOldest uses findOneAndUpdate so two replicas cannot
+│                             run the same job
 ├── llm.js                 talks to Anthropic (native Messages API) or an
 │                           openai-compatible provider, for classify() and
 │                           itsm-support's tool-calling
@@ -27,20 +31,38 @@ src/
 ├── itsmAgent.js               itsm-support: single-turn tool-calling scoped to only the
 │                              verbs action-mappings.yaml actually maps
 ├── notify.js                  Slack Incoming Webhook POST (SLACK_WEBHOOK_URL) for tier 2/3
+├── chat/                       the conversational front door — separate from notify.js,
+│   ├── index.js                 which is one-way outbound
+│   ├── slack.js                  Socket Mode: dials out, needs no ingress
+│   ├── teams.js                   Bot Framework: needs a public HTTPS endpoint
+│   └── format.js                   how a finished job reads back
 └── index.js                    Express app: /triage, /actions/:verb, /approvals, /status
 ```
 
 ## Endpoints
 
-- `POST /triage {"text": "..."}` — classifies the message, then routes
-  to Holmes or itsm-support.
+- `POST /triage {"text": "..."}` — queues the request and returns **202
+  with a job id**, not the answer. Slack and Teams both want an ack inside
+  3 seconds and the infra lane runs ~29s, so the answer cannot be the HTTP
+  response. Add `?wait=true` to block for it — useful for a curl, useless
+  for a bot.
+- `GET /triage/:id` — one job. `GET /triage` — the queue.
 - `POST /actions/:verb {"args": {...}, "summary": "..."}` — call one
   policy verb directly, bypassing classification. Useful for testing a
   mapping/tier.
 - `GET /approvals`, `POST /approvals/:id/approve` — tier_3 actions park
   here instead of executing; nothing auto-approves them.
 - `GET /status` — connected backends, their live tool lists, pending
-  approvals.
+  approvals, queue depth, and `durableState` — which says plainly whether
+  a restart would lose parked approvals and queued work.
+
+All of the above are on the main port, which **authenticates nothing**;
+the deny-all NetworkPolicy is the access control. A chat adapter that needs
+an inbound endpoint (Teams) gets its own listener on its own port with
+nothing mounted but `/api/messages`, exposed by a separate `-endpoint`
+Service. Point an Ingress at that Service, never at the main one:
+`/approvals/:id/approve` takes no credentials and will execute a parked
+tier-3 for anyone who can POST to it.
 
 ## Testing
 
@@ -153,31 +175,58 @@ curl -s -X POST localhost:3000/triage   -H 'content-type: application/json'   -d
 # create_ticket, tier_3) and it went through the same executor path
 ```
 
+## The chat front door
+
+**Slack is live.** Socket Mode, so the bridge dials out over a WebSocket and
+needs no ingress, no public DNS and no request-signature verification — which
+is what makes it workable on an estate where every hostname is tailnet-only.
+`slack-app-manifest.yaml` at the repo root creates the app; it is derived from
+what `chat/slack.js` actually calls rather than a generic template.
+
+Set `chat.provider: slack` and `chat.approvers`, and supply `SLACK_APP_TOKEN`
+and `SLACK_BOT_TOKEN` through ESO. **`approvers` empty means nobody** — the
+identity check is the whole reason the button exists, since the HTTP approve
+endpoint has none.
+
+How it behaves:
+
+- An @mention queues a job and gets an eyes reaction — an honest ack that the
+  work is queued, not done. The answer arrives in-thread.
+- **Replies in a thread it has already spoken in are picked up too**, without
+  needing another mention. Only `app_mention` was subscribed at first, so a
+  plain reply raised no event: the bot could ask a clarifying question and then
+  ignore the answer. Needs `channels:history` and `message.channels`.
+- Prior turns in the thread are passed as context, so a follow-up means
+  something. Each job used to be standalone.
+- The asker's email is resolved from their Slack profile and stated to the
+  agent, because Freshservice rejects `create_ticket` without a requester and
+  the person asking *is* the requester. Needs `users:read.email`. Every one of
+  these degrades to the older single-shot behaviour rather than failing.
+- A tier-3 comes back with an Approve button and a confirm dialog. Pressing it
+  is checked against `approvers` server-side — the button being visible is not
+  the same as it being usable.
+
+**Teams is implemented but unproven.** It has no Socket Mode equivalent: the
+Bot Framework POSTs to an endpoint you host, so it needs something publicly
+reachable. Set `chat.endpoint.enabled: true` and it serves `/api/messages` on
+its own port and its own Service, so exactly that one route can be exposed —
+see the note under Endpoints for why that separation is not optional. That
+route can be public because the Bot Framework validates a JWT on every
+request. `MicrosoftAppType` supports `UserAssignedMSI`, so on AKS with
+workload identity there is no bot secret to hold at all.
+
 ## Known gaps
 
-- **Nothing delivers requests.** `/triage` is a plain HTTP endpoint on a
-  ClusterIP Service behind a deny-all NetworkPolicy. No Slack app, no
-  Teams bot, no Alertmanager receiver, no ingress. Every request so far
-  has been posted by hand from inside the pod.
-
-  Three separate things are missing, and only one is a bot: a network
-  path in, authentication (this service has none — the NetworkPolicy is
-  the access control), and an adapter that maps the source's payload
-  onto `POST /triage`.
-
-  **A chat integration cannot be a thin proxy.** Slack requires an ack
-  within 3 seconds and Teams' Bot Framework expects the same. Measured on
-  the deployed bridge: ITSM lane ~6s, infra lane ~29s (Holmes actually
-  investigates), `runbook_draft` up to its 180s timeout. Any bot has to
-  ack immediately, work asynchronously, and post back to the thread —
-  which `/triage`'s synchronous request/response shape doesn't support
-  today.
-
-  Cheapest first integration is an in-cluster POST from an alert source
-  or an ITSM outbound webhook: no public endpoint, no signature
-  verification, no 3-second limit. A bot is only strictly needed for a
-  human typing a sentence, and for approving tier-3 actions with a button
-  instead of a UUID.
+- **Thread history is fetched from Slack, not kept here.** `conversations.replies`
+  needs `channels:history`, and Teams has no cheap equivalent — reading prior
+  turns there means Graph with tenant admin consent. Since the bridge already
+  has durable state, keeping the transcript itself keyed by thread id would be
+  platform-neutral and need no extra scope on either. That is the version to
+  build if Teams becomes real.
+- **No Alertmanager receiver.** A chat front door covers a human typing a
+  sentence; an alert firing at 3am still has no path in. That is an in-cluster
+  POST with no public endpoint and no 3-second limit, so it is the cheaper of
+  the two — it just has not been done.
 - **`itsm-support`'s tool-calling is single-turn.** One completion picks
   zero-or-one action and calls it. It doesn't loop (call a tool, look at
   the result, decide whether to call another). Because of that it also
@@ -199,9 +248,11 @@ curl -s -X POST localhost:3000/triage   -H 'content-type: application/json'   -d
   from `sre-investigator`'s toolset in `swarm.config.json` aren't
   connected by this bridge — Holmes already has its own toolsets for
   these, so `sreAgent.js` relays to Holmes instead.
-- **Pending approvals are in-memory by default** — lost on a pod
-  restart, and only visible to the pod that created them. Set
-  `mongoState.enabled: true` in the chart to back this with
-  mongostate-crossplane's connection secret instead (see
-  `approvalsStore.js` and that repo's README) — off by default because
-  it needs a one-time cross-cluster RBAC/token setup, documented there.
+- **State is in-memory unless `mongoState.enabled: true`** — parked
+  approvals and queued jobs would be lost on a pod restart and invisible to
+  any other replica. It is enabled in this estate and backed by
+  mongostate-crossplane over the tailnet, which `GET /status` reports as
+  `durableState`. Off by default because it needs a one-time cross-cluster
+  RBAC/token setup, documented in that repo. When Mongo is unreachable the
+  bridge degrades to in-memory and says so in `degradedReason` rather than
+  crash-looping.

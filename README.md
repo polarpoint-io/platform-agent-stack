@@ -23,7 +23,7 @@ platform-agent-stack/
 ├── charts/platform-agent-stack/
 │   ├── Chart.yaml
 │   ├── values.yaml
-│   ├── templates/          ConfigMaps, ExternalSecrets, Deployment, Service, NetworkPolicy
+│   ├── templates/          ConfigMaps, ExternalSecrets, Deployment, Services, NetworkPolicy
 │   ├── swarm/               swarm.config.json — agents and wiring
 │   ├── policy/               risk-tiers.yaml — 4 tiers, unlisted fails closed
 │   ├── itsm-providers/
@@ -32,8 +32,8 @@ platform-agent-stack/
 │   ├── llm-providers/        anthropic.yaml — the LLM backend the bridge calls
 │   ├── mcp/base.mcp.json     base MCP servers, merged with the provider at render
 │   └── scripts/               config validation, run in CI
+├── slack-app-manifest.yaml  paste at api.slack.com to create the Slack app
 ├── confluence-toolset/    read-only REST, no MCP required (not yet implemented)
-├── argocd/                app definition for argocd-tooling-applications
 ├── docs/diagrams/         C4 model — .puml source
 └── images/external/       rendered PNGs, committed by CI
 ```
@@ -64,11 +64,12 @@ directory within it.
 
 ## Deploying
 
-ArgoCD owns this. Register the Application by copying
-`argocd/non-prod.yaml` into
-`argocd-tooling-applications/releases/apps/platform/platform-agent-stack/`
-— the children template there globs `**/<env>.yaml` and generates the
-Application from it.
+ArgoCD owns this. The Application is declared in `argocd-core`'s
+environment values file — `<env>-aoa-values.yaml`, under the `tooling`
+project's `applications:` list — and rendered by the `argocd-app-of-apps`
+chart. There is no per-app descriptor file and no parent Application: an
+earlier scheme had a parent whose rendered output was more Application
+specs, which meant every change took two syncs.
 
 Credentials come from External Secrets Operator. The chart names the
 remote keys; it never holds a value. Set `externalSecrets.secretStoreRef`
@@ -83,7 +84,9 @@ helm template pas charts/platform-agent-stack --values charts/platform-agent-sta
 
 The chart refuses to render if `itsmProvider` has no provider file, a
 provider file but no action mapping, `image.tag` isn't a plain semver,
-or `networkPolicy.enabled=false`/`service.type` isn't `ClusterIP`.
+or `networkPolicy.enabled=false`/`service.type` isn't `ClusterIP`. Those
+last two are not fussiness: the bridge authenticates nothing, so the
+NetworkPolicy is the entire access control.
 
 ## Swapping the ITSM backend
 
@@ -107,6 +110,22 @@ only enforce what the mapping says. See
 (Jira and Freshservice) where a provider's tool shapes don't fit the
 tiers cleanly.
 
+## The chat front door
+
+Slack is live, over Socket Mode — it dials out, so there is no ingress, no
+public DNS and nothing to expose. `slack-app-manifest.yaml` creates the app;
+paste it at api.slack.com under "From an app manifest". Set
+`chat.provider: slack`, put the two tokens in your secret store, and list
+Slack member ids in `chat.approvers` — **empty means nobody**, which is the
+point: releasing a tier-3 action is the one thing that must never default
+open.
+
+Teams is implemented but unproven, and needs a publicly reachable endpoint
+because the Bot Framework cannot dial out. `chat.endpoint.enabled: true`
+serves `/api/messages` on its own port and its own Service so exactly that
+route can be exposed — never the main one, which has no authentication.
+See `bridge/README.md`.
+
 ## The bridge
 
 `bridge/` connects to the ITSM MCP server and `holmesgpt-runbook-mcp`,
@@ -120,5 +139,5 @@ for endpoints and known gaps.
 | Repo | Owns |
 |---|---|
 | [`platform-agent-stack`](https://github.com/polarpoint-io/platform-agent-stack) | Agent topology, risk policy, pluggable ITSM/LLM/Confluence backends, and the bridge that enforces all of it |
-| [`mongostate-crossplane`](https://github.com/polarpoint-io/mongostate-crossplane) | Portable Mongo-compatible state across four platforms — not currently wired into the bridge (pending approvals are in-memory; see bridge/README.md) |
+| [`mongostate-crossplane`](https://github.com/polarpoint-io/mongostate-crossplane) | Portable Mongo-compatible state across four platforms — backs the bridge's parked approvals and job queue when `mongoState.enabled: true`; `GET /status` reports `durableState` |
 | [`holmesgpt-runbook-mcp`](https://github.com/polarpoint-io/holmesgpt-runbook-mcp) | Pre-existing — runbook search, RCA and drafting |
