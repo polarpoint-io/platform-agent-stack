@@ -113,6 +113,7 @@ function inMemoryStore(reason) {
   return {
     approvals: inMemoryCollection(),
     jobs: inMemoryCollection(),
+    alerts: inMemoryCollection(),
     durable: false,
     degradedReason: reason || null,
     async close() {},
@@ -153,6 +154,10 @@ export async function createStateStore(mongoUri, { connectTimeoutMs = 10000 } = 
     return {
       approvals: mongoCollection(ready, "pending_approvals"),
       jobs: mongoCollection(ready, "triage_jobs"),
+      // Which alerts have already been triaged. Durable on purpose: held only
+      // in memory, a restart re-triages everything currently firing, which on a
+      // bad morning is a burst of duplicate tickets.
+      alerts: mongoCollection(ready, "seen_alerts"),
       durable: true,
       degradedReason: null,
       async close() {

@@ -215,6 +215,29 @@ route can be public because the Bot Framework validates a JWT on every
 request. `MicrosoftAppType` supports `UserAssignedMSI`, so on AKS with
 workload identity there is no bot secret to hold at all.
 
+## Alerts
+
+The only path by which the agent notices something without being asked.
+
+It **polls** Grafana rather than receiving a webhook. Alerting happens in Grafana
+Cloud, outside the estate, and the bridge is tailnet-only behind a deny-all
+NetworkPolicy with no authentication of its own, so nothing out there can reach
+in. Polling dials out the same way Slack's Socket Mode does: no public endpoint,
+no inbound auth, no new attack surface. It works against a self-hosted Grafana
+too - only the URL changes.
+
+Set `alerts.enabled: true` and supply `GRAFANA_URL` and `GRAFANA_TOKEN` through
+ESO. The token only needs to read alerts.
+
+**It is opt-in per alert.** Only rules labelled `agent=triage` (configurable)
+reach the agent. Without that filter every warning in the estate becomes a triage
+job and then a ticket, and the ones that matter drown.
+
+Each firing is triaged **once**. The fingerprints of alerts already seen live in
+the same durable store as approvals and jobs, so a restart does not re-triage
+everything currently firing. An alert that stops firing is forgotten, so a
+recurrence is triaged again rather than suppressed forever.
+
 ## Known gaps
 
 - **Thread history is fetched from Slack, not kept here.** `conversations.replies`

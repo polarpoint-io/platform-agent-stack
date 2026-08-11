@@ -85,6 +85,20 @@ export function loadConfig() {
     // Set when the database is reached through a proxy rather than at the
     // address baked into the connection secret - see rewriteMongoHost().
     mongoHostOverride: process.env.MONGO_HOST_OVERRIDE || "",
+    // Grafana alerts -> /triage. Polls out rather than receiving a webhook:
+    // alerting happens outside the estate and the bridge is tailnet-only behind
+    // a deny-all NetworkPolicy, so nothing out there can reach in.
+    alerts: {
+      enabled: (process.env.ALERTS_ENABLED || "false").toLowerCase() === "true",
+      url: process.env.GRAFANA_URL || "",
+      token: process.env.GRAFANA_TOKEN || "",
+      pollSeconds: parseInt(process.env.ALERTS_POLL_SECONDS || "60", 10),
+      // OPT-IN. Without a selector every warning in the estate becomes a triage
+      // job and then a ticket, and the ones that matter drown.
+      labelKey: process.env.ALERTS_LABEL_KEY || "agent",
+      labelValue: process.env.ALERTS_LABEL_VALUE || "triage",
+    },
+
     // Chat front door. "none" (default), "slack" or "teams" - see chat/index.js
     // for why the platform is a deployment choice rather than something the
     // agents or the policy know about.

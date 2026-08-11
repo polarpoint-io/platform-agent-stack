@@ -10,7 +10,7 @@ llmProvider: anthropic
 image:
   # Built and pushed by .github/workflows/build-bridge-image.yml from bridge/.
   repository: ghcr.io/polarpoint-io/platform-agent-bridge
-  tag: "0.6.0"
+  tag: "0.7.0"
   pullPolicy: IfNotPresent
 
 # Per-tool-call timeout for MCP requests. The SDK default of 60s is too
@@ -98,6 +98,27 @@ chat:
     enabled: false
     port: 3979
     serviceAnnotations: {}
+
+# Grafana alerts -> /triage. The only path by which the agent notices something
+# without a human asking; everything else is someone typing in a chat client.
+#
+# It POLLS Grafana rather than receiving a webhook. Alerting happens in Grafana
+# Cloud, outside the estate, and the bridge is tailnet-only behind a deny-all
+# NetworkPolicy with no authentication of its own - so nothing out there can
+# reach in. Polling dials out the same way Slack's Socket Mode does: no public
+# endpoint, no inbound auth, no new attack surface.
+#
+# GRAFANA_URL and GRAFANA_TOKEN come from ESO like every other credential - add
+# a `grafana` entry to externalSecrets.keys. The token only needs to read
+# alerts.
+alerts:
+  enabled: false
+  pollSeconds: 60
+  # OPT-IN, and deliberately so. Without a selector every warning in the estate
+  # becomes a triage job and then a ticket, and the ones that matter drown.
+  # Label the handful of rules that genuinely want an agent looking at them.
+  labelKey: agent
+  labelValue: triage
 
 # External Secrets Operator. Nothing secret is committed to this repo;
 # the chart only names where to find it.

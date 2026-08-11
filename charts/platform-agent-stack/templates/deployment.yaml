@@ -81,6 +81,16 @@ spec:
             - name: CHAT_APPROVERS
               value: {{ join "," .Values.chat.approvers | quote }}
             {{- end }}
+            {{- if .Values.alerts.enabled }}
+            - name: ALERTS_ENABLED
+              value: "true"
+            - name: ALERTS_POLL_SECONDS
+              value: {{ .Values.alerts.pollSeconds | quote }}
+            - name: ALERTS_LABEL_KEY
+              value: {{ .Values.alerts.labelKey | quote }}
+            - name: ALERTS_LABEL_VALUE
+              value: {{ .Values.alerts.labelValue | quote }}
+            {{- end }}
             - name: HOLMES_URL
               value: {{ .Values.holmesUrl | quote }}
             - name: HOLMES_RUNBOOK_MCP_URL

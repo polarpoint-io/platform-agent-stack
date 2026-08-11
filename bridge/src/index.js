@@ -16,6 +16,7 @@ import { classify } from "./llm.js";
 import { handleInfraRequest } from "./sreAgent.js";
 import { handleItsmRequest } from "./itsmAgent.js";
 import { createChatAdapter } from "./chat/index.js";
+import { startAlertPoller } from "./alerts.js";
 
 async function main() {
   const config = loadConfig();
@@ -209,6 +210,14 @@ async function main() {
     console.log(`[chat] ${chat.name} front door active`);
   }
 
+  // Nothing else notices anything on its own - every other request is a human
+  // typing in a chat client.
+  const alertPoller = startAlertPoller({
+    config: config.alerts,
+    jobs,
+    store: state.alerts,
+  });
+
   const server = app.listen(config.port, "0.0.0.0", () => {
     console.log(`platform-agent-bridge listening on 0.0.0.0:${config.port}`);
   });
@@ -220,6 +229,7 @@ async function main() {
     process.on(signal, async () => {
       console.log(`[shutdown] ${signal} - draining`);
       worker.stop();
+      alertPoller.stop();
       await chat?.stop?.().catch(() => {});
       server.close();
       publicServer?.close();
