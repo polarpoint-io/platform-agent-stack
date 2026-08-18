@@ -19,10 +19,22 @@ actions:
   # tier 1 — read-only
   search_tickets:       searchJiraIssuesUsingJql
   get_ticket:           getJiraIssue
-  # JSM knowledge base articles live in Confluence, not Jira.
-  list_kb_articles:     searchConfluenceUsingCql
-  get_confluence_page:  getConfluencePage
-  search_confluence:    searchConfluenceUsingCql
+
+  # Knowledge base articles live in Confluence, not Jira. UNMAPPED, because the
+  # service-account key carries no Confluence scopes: tools/list on 2026-08-18
+  # returned 18 tools and neither searchConfluenceUsingCql nor getConfluencePage
+  # was among them.
+  #
+  # Unmapped is the honest state. An unmapped verb cannot execute at all, which
+  # is a clean "not available"; a MAPPED verb whose tool is absent fails on every
+  # call and reads like a bug in the agent. assertVerbsResolve() would also warn
+  # about all three at every boot.
+  #
+  # Restore these three lines when a key with read:confluence-content.all and
+  # search:confluence exists. Nothing else needs to change.
+  # list_kb_articles:     searchConfluenceUsingCql
+  # get_confluence_page:  getConfluencePage
+  # search_confluence:    searchConfluenceUsingCql
 
   # tier 2 — low-risk write, executes and notifies
   add_ticket_comment:   addCommentToJiraIssue
@@ -69,17 +81,15 @@ argument_hints:
   create_ticket: >-
     Do NOT supply cloudId or projectKey. Both are injected by the bridge from
     deployment config and anything you provide for them is overwritten.
-    issueTypeName IS yours to choose and is required. The target project SUP is
-    a Jira SERVICE MANAGEMENT project, so use its request types — typically
-    "Service Request" for access, provisioning and how-do-I asks, and "Incident"
-    when something is broken or degraded. Put the user's own words in summary,
-    and the full context (who reported it, what they observed, when it started)
-    in description.
-    # UNVERIFIED: SUP's real request-type names have NOT been read from
-    # getJiraProjectIssueTypesMetadata, because the service account cannot yet
-    # see the project. Every JSM project defines its own, and a name that does
-    # not exist is a hard failure. Confirm against the live metadata before
-    # trusting this hint - it is the one part of this mapping still guessed.
+    issueTypeName IS yours to choose and is required. The target project DO is a
+    Jira SOFTWARE project, not a service desk, and its issue types were read
+    from live metadata on 2026-08-18: Epic, Story, Task, Sub-task, Bug. Use
+    "Bug" when something is broken or degraded, and "Task" for everything else
+    (access requests, provisioning, how-do-I). Do NOT use "Service Request",
+    "Incident" or any other JSM request type — they do not exist in this project
+    and the call fails. Put the user's own words in summary, and the full
+    context (who reported it, what they observed, when it started) in
+    description.
   add_ticket_comment: >-
     Do NOT supply cloudId — it is injected by the bridge. issueIdOrKey is the
     Jira key like DO-123, not a numeric database id, unless the user gave you a

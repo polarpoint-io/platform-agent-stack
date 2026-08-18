@@ -1,7 +1,7 @@
 # Which ITSM backend to wire in. Must match a file under
 # itsm-providers/providers/ AND one under itsm-providers/action-mappings/.
 # The chart fails to render if either is missing.
-itsmProvider: freshservice
+itsmProvider: jira-service-management
 
 # Which LLM backend to wire in. Must match a file under llm-providers/
 # (rename the .example to enable it). The chart fails to render if missing.
@@ -24,23 +24,23 @@ image:
 jira:
   # curl -s https://<your-site>.atlassian.net/_edge/tenant_info
   cloudId: "14b1a00e-e800-4e06-8837-63cc0264ac84"   # polarpoint.atlassian.net
-  # The service desk project new tickets are raised in.
+  # The project new tickets are raised in.
   #
-  # SUP - a real Jira Service Management project, which is the right home for an
-  # ITSM agent: request types, portal, queues and SLAs, rather than a delivery
-  # board. Chosen 2026-08-18.
+  # DO (DevOps). SUP is the real service desk and would be the better home, but
+  # reaching it needs a Jira Service Management AGENT seat for the service
+  # account and those are billable - a Jira Software licence grants nothing
+  # inside a service desk. Not worth a paid seat for a bot on this estate, so
+  # the agent raises work on the DevOps board instead. Switch to SUP by changing
+  # this one value IF a seat is ever bought; the mapping's create_ticket hint
+  # would need its issue types changed to SUP's request types at the same time.
   #
-  # BLOCKED until the service account can see it. Probed the same day: SUP does
-  # not appear in getVisibleJiraProjects, its issue-type metadata comes back
-  # empty, and getJiraIssue("SUP-1") returns "Issue does not exist or you do not
-  # have permission to see it" - while ALAT and DO read fine. A Jira SOFTWARE
-  # licence grants nothing inside a service desk, so the account needs a JSM
-  # AGENT seat plus membership of SUP's Service Desk Team role.
+  # DO is a Jira SOFTWARE project: issue types read from live metadata on
+  # 2026-08-18 are Epic, Story, Task, Sub-task, Bug. No request types, no
+  # portal, no SLAs.
   #
-  # Do NOT trust a JQL search as the test for this. `project = "SUP"` returns
-  # 0 issues with NO error - and so does `project = "ZZZNOPE"`, a key that does
-  # not exist. getJiraIssue is the discriminator.
-  projectKey: "SUP"
+  # "DO" is also a RESERVED JQL WORD - generated queries must quote it, which is
+  # mandated in the search_tickets hint. Unquoted, Jira rejects the query.
+  projectKey: "DO"
 
 # Per-tool-call timeout for MCP requests. The SDK default of 60s is too
 # short for tools that call an LLM and then a git forge.

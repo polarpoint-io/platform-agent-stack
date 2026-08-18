@@ -2,7 +2,7 @@ apiVersion: v2
 name: platform-agent-stack
 description: Agent topology, risk policy and pluggable ITSM/LLM/Confluence backends for a triage-router + itsm-support + HolmesGPT SRE/ITSM agent stack, fronted by a custom MCP bridge (bridge/)
 type: application
-version: 0.9.0
+version: 0.10.0
 appVersion: "0.10.0"
 icon: https://raw.githubusercontent.com/polarpoint-io/images-icons-avatars/master/assets/img/polarpoint.png
 home: https://github.com/polarpoint-io/platform-agent-stack
