@@ -62,23 +62,32 @@ actions:
 # Appended to the tool description the model sees, and read only by
 # bridge/src/itsmAgent.js — policy.js ignores this block entirely, so
 # nothing here can affect a tier decision.
+#
+# The JQL rules below are not stylistic. Both were hit against the live server
+# on 2026-08-18 and both are hard failures, not warnings.
 argument_hints:
   create_ticket: >-
     Do NOT supply cloudId or projectKey. Both are injected by the bridge from
     deployment config and anything you provide for them is overwritten.
-    issueTypeName IS yours to choose and is required: use the request type this
-    service desk expects — commonly "Service Request" for access and
-    provisioning asks, "Incident" for something broken, or "Task" on a
-    non-JSM board. Put the user's own words in summary, and the full context
-    (who reported it, what they observed, when it started) in description.
+    issueTypeName IS yours to choose and is required. The target project DO is a
+    Jira SOFTWARE project, not a service desk, so the only valid types are
+    Epic, Story, Task, Sub-task and Bug — use "Bug" when something is broken and
+    "Task" for everything else. Do NOT use "Service Request", "Incident" or any
+    other JSM request type: they do not exist here and the call will fail. Put
+    the user's own words in summary, and the full context (who reported it, what
+    they observed, when it started) in description.
   add_ticket_comment: >-
     Do NOT supply cloudId — it is injected by the bridge. issueIdOrKey is the
-    Jira key like SD-123, not a numeric database id, unless the user gave you a
+    Jira key like DO-123, not a numeric database id, unless the user gave you a
     numeric id explicitly.
   search_tickets: >-
-    Do NOT supply cloudId — it is injected. jql is real JQL: scope it to the
-    service desk project and order it, e.g.
-    project = SD AND status != Done ORDER BY created DESC.
+    Do NOT supply cloudId — it is injected. jql is real JQL and TWO rules apply.
+    (1) ALWAYS quote the project key: project = "DO". DO is a reserved JQL word
+    and an unquoted key is rejected outright with 'DO is a reserved JQL word'.
+    (2) NEVER send an unbounded query. Jira rejects one with 'Unbounded JQL
+    queries are not allowed here' — always include a restriction, not just an
+    ORDER BY. A good default is
+    project = "DO" AND status != Done ORDER BY created DESC.
   get_ticket: >-
     Do NOT supply cloudId — it is injected. issueIdOrKey is the Jira key
-    like SD-123.
+    like DO-123.
