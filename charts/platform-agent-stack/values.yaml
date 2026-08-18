@@ -24,17 +24,23 @@ image:
 jira:
   # curl -s https://<your-site>.atlassian.net/_edge/tenant_info
   cloudId: "14b1a00e-e800-4e06-8837-63cc0264ac84"   # polarpoint.atlassian.net
-  # The project new tickets are raised in.
+  # The service desk project new tickets are raised in.
   #
-  # DO (DevOps) - chosen 2026-08-18 and verified reachable by the service
-  # account. NOTE it is a Jira SOFTWARE project, not a service desk: valid issue
-  # types are Epic/Story/Task/Sub-task/Bug, and there are no JSM request types,
-  # portal or SLAs. The action mapping's argument_hints reflect that. Revisit if
-  # a real service desk project is created.
+  # SUP - a real Jira Service Management project, which is the right home for an
+  # ITSM agent: request types, portal, queues and SLAs, rather than a delivery
+  # board. Chosen 2026-08-18.
   #
-  # "DO" is also a RESERVED JQL WORD - generated queries must quote it. That is
-  # mandated in the search_tickets hint, because an unquoted key is rejected.
-  projectKey: "DO"
+  # BLOCKED until the service account can see it. Probed the same day: SUP does
+  # not appear in getVisibleJiraProjects, its issue-type metadata comes back
+  # empty, and getJiraIssue("SUP-1") returns "Issue does not exist or you do not
+  # have permission to see it" - while ALAT and DO read fine. A Jira SOFTWARE
+  # licence grants nothing inside a service desk, so the account needs a JSM
+  # AGENT seat plus membership of SUP's Service Desk Team role.
+  #
+  # Do NOT trust a JQL search as the test for this. `project = "SUP"` returns
+  # 0 issues with NO error - and so does `project = "ZZZNOPE"`, a key that does
+  # not exist. getJiraIssue is the discriminator.
+  projectKey: "SUP"
 
 # Per-tool-call timeout for MCP requests. The SDK default of 60s is too
 # short for tools that call an LLM and then a git forge.

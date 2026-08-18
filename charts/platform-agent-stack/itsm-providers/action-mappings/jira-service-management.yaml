@@ -69,13 +69,17 @@ argument_hints:
   create_ticket: >-
     Do NOT supply cloudId or projectKey. Both are injected by the bridge from
     deployment config and anything you provide for them is overwritten.
-    issueTypeName IS yours to choose and is required. The target project DO is a
-    Jira SOFTWARE project, not a service desk, so the only valid types are
-    Epic, Story, Task, Sub-task and Bug — use "Bug" when something is broken and
-    "Task" for everything else. Do NOT use "Service Request", "Incident" or any
-    other JSM request type: they do not exist here and the call will fail. Put
-    the user's own words in summary, and the full context (who reported it, what
-    they observed, when it started) in description.
+    issueTypeName IS yours to choose and is required. The target project SUP is
+    a Jira SERVICE MANAGEMENT project, so use its request types — typically
+    "Service Request" for access, provisioning and how-do-I asks, and "Incident"
+    when something is broken or degraded. Put the user's own words in summary,
+    and the full context (who reported it, what they observed, when it started)
+    in description.
+    # UNVERIFIED: SUP's real request-type names have NOT been read from
+    # getJiraProjectIssueTypesMetadata, because the service account cannot yet
+    # see the project. Every JSM project defines its own, and a name that does
+    # not exist is a hard failure. Confirm against the live metadata before
+    # trusting this hint - it is the one part of this mapping still guessed.
   add_ticket_comment: >-
     Do NOT supply cloudId — it is injected by the bridge. issueIdOrKey is the
     Jira key like DO-123, not a numeric database id, unless the user gave you a
