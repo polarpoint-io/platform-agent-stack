@@ -213,6 +213,21 @@ export class BackendRegistry {
     return out;
   }
 
+  /**
+   * What the args WILL look like when this backend is called.
+   *
+   * Used to show an approver the real target of a parked tier-3 action -
+   * injection happens at call time, so without this a parked record showed
+   * cloudId and projectKey as undefined and a human approved blind. Purely a
+   * preview: callTool injects again regardless, so a config change between
+   * park and approve cannot be staged by a stale record.
+   */
+  injectedArgsFor(backendName, args) {
+    const backend = this.backends.get(backendName);
+    if (!backend) return args;
+    return BackendRegistry.applyInjected(backend.injectArgs, args, () => {});
+  }
+
   async callTool(backendName, toolName, args) {
     const backend = this.backends.get(backendName);
     if (!backend) {

@@ -1,6 +1,6 @@
 {
   "name": "platform-agent-bridge",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "MCP bridge for platform-agent-stack: connects to the configured ITSM MCP server and holmesgpt-runbook-mcp, gates every tool call against risk-tiers.yaml via action-mappings, and routes inbound requests between HolmesGPT (infra) and the ITSM backend (tickets).",
   "type": "module",
   "private": true,

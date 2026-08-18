@@ -162,6 +162,7 @@ function inMemoryStore(reason) {
     approvals: inMemoryCollection(),
     jobs: inMemoryCollection(),
     alerts: inMemoryCollection(),
+    decisions: inMemoryCollection(),
     leases: inMemoryLeases(),
     durable: false,
     degradedReason: reason || null,
@@ -207,6 +208,11 @@ export async function createStateStore(mongoUri, { connectTimeoutMs = 10000 } = 
       // in memory, a restart re-triages everything currently firing, which on a
       // bad morning is a burst of duplicate tickets.
       alerts: mongoCollection(ready, "seen_alerts"),
+      // Every tier-3 decision a human made, approved AND rejected, kept after
+      // the pending record is gone. Without this the audit trail was a metrics
+      // counter and a Slack message: "who approved DO-3, when, and why" was
+      // unanswerable, and a rejection left no trace at all.
+      decisions: mongoCollection(ready, "approval_decisions"),
       leases: mongoLeases(ready.then((c) => c.db().collection("leader_leases"))),
       durable: true,
       degradedReason: null,

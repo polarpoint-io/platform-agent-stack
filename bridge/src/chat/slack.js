@@ -173,6 +173,39 @@ export function createSlackAdapter({ config, deps }) {
         console.log(`[chat/slack] queued ${id} from ${event.user} (thread reply)`);
       });
 
+      // Declining is gated by the SAME allowlist as approving. Rejection is a
+      // decision too - letting anyone clear another team's parked action would
+      // be a denial-of-service on the approval queue, and would put a name on
+      // the audit record that had no authority to be there.
+      app.action(/^reject:/, async ({ ack, action, body, client }) => {
+        await ack();
+        const approvalId = action.action_id.slice("reject:".length);
+        const user = body.user?.id;
+        if (!canApprove(user, config.approvers)) {
+          await client.chat.postEphemeral({
+            channel: body.channel.id, user,
+            text: `You are not on the approver list, so I have not rejected that. Approval id \`${approvalId}\` is still pending.`,
+          });
+          console.warn(`[chat/slack] refused rejection ${approvalId} from ${user}`);
+          return;
+        }
+        try {
+          await executor.reject(approvalId, { actor: user, channel: "slack", reason: "rejected from Slack" });
+          await client.chat.postMessage({
+            channel: body.channel.id,
+            thread_ts: body.message?.thread_ts || body.message?.ts,
+            text: `Rejected by <@${user}>. Nothing was executed. (\`${approvalId}\`)`,
+          });
+          console.log(`[chat/slack] ${approvalId} rejected by ${user}`);
+        } catch (err) {
+          await client.chat.postMessage({
+            channel: body.channel.id,
+            thread_ts: body.message?.thread_ts || body.message?.ts,
+            text: `Could not reject \`${approvalId}\`: ${err.message}`,
+          });
+        }
+      });
+
       app.action(/^approve:/, async ({ ack, action, body, client }) => {
         await ack();
         const approvalId = action.action_id.slice("approve:".length);
@@ -190,7 +223,7 @@ export function createSlackAdapter({ config, deps }) {
         }
 
         try {
-          await executor.approve(approvalId);
+          await executor.approve(approvalId, { actor: user, channel: "slack" });
           await client.chat.postMessage({
             channel: body.channel.id,
             thread_ts: body.message?.thread_ts || body.message?.ts,
@@ -236,6 +269,10 @@ export function createSlackAdapter({ config, deps }) {
       for (const approval of pendingApprovalsIn(job)) {
         blocks.push({
           type: "actions",
+          // Reject sits beside Approve deliberately. "Cancel" on the confirm
+          // dialog only dismisses the prompt and leaves the action parked, so
+          // without this the only way to say NO was to walk away - and the
+          // queue filled with decisions nobody had actually made.
           elements: [{
             type: "button",
             style: "primary",
@@ -246,6 +283,18 @@ export function createSlackAdapter({ config, deps }) {
               title: { type: "plain_text", text: `Run ${approval.verb}?` },
               text: { type: "mrkdwn", text: `This is ${approval.tier}. It has not been executed yet.` },
               confirm: { type: "plain_text", text: "Approve" },
+              deny: { type: "plain_text", text: "Cancel" },
+            },
+          }, {
+            type: "button",
+            style: "danger",
+            text: { type: "plain_text", text: "Reject" },
+            action_id: `reject:${approval.approvalId}`,
+            value: approval.approvalId,
+            confirm: {
+              title: { type: "plain_text", text: `Reject ${approval.verb}?` },
+              text: { type: "mrkdwn", text: "Nothing will be executed. The decision is recorded against your name." },
+              confirm: { type: "plain_text", text: "Reject" },
               deny: { type: "plain_text", text: "Cancel" },
             },
           }],

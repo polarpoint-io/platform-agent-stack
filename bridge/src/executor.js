@@ -58,7 +58,48 @@ function assertToolOk(backend, tool, result, pattern) {
 
 // resultChecks: { [backendName]: RegExp } - see config.js, which reads
 // resultIsErrorWhen out of the merged .mcp.json.
-export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack, approvalsStore, resultChecks = {} }) {
+export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack, approvalsStore, decisionsStore = null, resultChecks = {} }) {
+  /**
+   * Durable record of every tier-3 decision a human made - approved AND
+   * rejected - kept after the pending record is deleted.
+   *
+   * Before this, approving deleted the approval and left a counter and a Slack
+   * message, so "who approved this, when, and why" could not be answered from
+   * the system itself. A rejection left nothing at all, because there was no
+   * way to reject.
+   *
+   * `actor` is self-asserted over HTTP: a shared bearer token authorises the
+   * call but cannot say who sent it. It is recorded as claimed, with the
+   * channel alongside, so a reader can tell an authenticated chat identity
+   * (Slack validates it) from a name typed into a curl. Better to record a
+   * weak name honestly labelled than to record nothing.
+   */
+  async function auditDecision(id, pending, outcome, { actor, reason, channel, error } = {}) {
+    if (!decisionsStore) return;
+    try {
+      await decisionsStore.set(id, {
+        verb: pending.verb,
+        tier: pending.decision?.tier,
+        backend: pending.decision?.backend,
+        tool: pending.decision?.tool,
+        args: pending.args,
+        summary: pending.context?.summary,
+        outcome,
+        actor: actor || "unknown",
+        actorChannel: channel || "http",
+        actorVerified: channel === "slack" || channel === "teams",
+        reason: reason || null,
+        error: error || null,
+        parkedAt: pending.createdAt,
+        decidedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      // An audit write must not swallow the action itself, but silence here
+      // would be worse than noise - say so loudly.
+      console.error(`[audit] could not record ${outcome} of ${id}: ${err.message}`);
+    }
+  }
+
   // Record the decision, not just the call. A tier_3 that parked and a tier_1
   // that ran are both things an operator needs to count, and only one of them
   // ever reaches a backend - so counting backend calls alone would make the
@@ -104,7 +145,19 @@ export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack,
 
     if (decision.action === "park") {
       const id = randomUUID();
-      await approvalsStore.set(id, { verb, args, decision, context, createdAt: new Date().toISOString() });
+      // Store the args an approver will actually see EXECUTED, not the ones the
+      // model produced. Injected deployment facts - cloudId, projectKey - are
+      // added by mcpBackends at call time, so a parked record showed them as
+      // undefined: a human was asked to approve "create a ticket" without being
+      // told which project or which Atlassian site it lands in.
+      //
+      // They are re-applied at call time regardless, so this is for VISIBILITY
+      // and cannot stage a stale value: if the deployment config changes
+      // between park and approve, the live one still wins.
+      const shown = backends.injectedArgsFor
+        ? backends.injectedArgsFor(decision.backend, args)
+        : args;
+      await approvalsStore.set(id, { verb, args: shown, decision, context, createdAt: new Date().toISOString() });
       const note = `[approval needed] "${verb}"${context.summary ? ` - ${context.summary}` : ""} is waiting for approval. Approve: POST /approvals/${id}/approve`;
       await notifySlack(slackWebhookUrl, note);
       recordDecision(verb, decision, "parked");
@@ -135,7 +188,35 @@ export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack,
     return { ...decision, result };
   }
 
-  async function approve(id) {
+  /**
+   * Decline a parked action.
+   *
+   * "No" is a decision and needs to be as first-class as "yes". Until this
+   * existed the only way to clear an approval nobody wanted was to delete it
+   * out of MongoDB by hand - which left no record that a human had considered
+   * it and said no, and no way to tell that apart from a lost record.
+   */
+  async function reject(id, { actor, reason, channel } = {}) {
+    const pending = await approvalsStore.get(id);
+    if (!pending) {
+      const err = new Error(`no pending approval with id ${id}`);
+      err.code = "NO_SUCH_APPROVAL";
+      throw err;
+    }
+    // Recorded BEFORE deleting, so a crash between the two loses the pending
+    // record rather than the audit entry. A duplicate audit row is harmless;
+    // a missing one is not.
+    await auditDecision(id, pending, "rejected", { actor, reason, channel });
+    await approvalsStore.delete(id);
+    approvalDecisions.inc({ outcome: "rejected" });
+    await notifySlack(
+      slackWebhookUrl,
+      `[REJECTED] "${pending.verb}"${pending.context?.summary ? ` - ${pending.context.summary}` : ""} declined by ${actor || "unknown"}${reason ? `: ${reason}` : ""}. Nothing was executed.`
+    );
+    return { id, verb: pending.verb, outcome: "rejected", actor: actor || "unknown", reason: reason || null };
+  }
+
+  async function approve(id, { actor, reason, channel } = {}) {
     const pending = await approvalsStore.get(id);
     if (!pending) {
       const err = new Error(`no pending approval with id ${id}`);
@@ -165,20 +246,31 @@ export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack,
       // of a suspended ITSM account, and it stays pending - so counting it as a
       // plain failure would hide that a human decision is still outstanding.
       approvalDecisions.inc({ outcome: "backend_rejected" });
+      // Audited even though it stays pending: a human DID decide, and that the
+      // backend then refused is part of the record, not a reason to lose it.
+      await auditDecision(id, pending, "backend_rejected", { actor, reason, channel, error: err.message });
       err.approvalId = id;
       err.stillPending = true;
       throw err;
     }
 
     approvalDecisions.inc({ outcome: "executed" });
+    await auditDecision(id, pending, "executed", { actor, reason, channel });
     await approvalsStore.delete(id);
-    await notifySlack(slackWebhookUrl, `[approved & executed] "${pending.verb}"${pending.context.summary ? ` - ${pending.context.summary}` : ""}`);
+    await notifySlack(slackWebhookUrl, `[approved & executed] "${pending.verb}"${pending.context.summary ? ` - ${pending.context.summary}` : ""} by ${actor || "unknown"}`);
     return result;
+  }
+
+  /** The audit trail: decisions humans made, newest first. */
+  async function listDecisions() {
+    if (!decisionsStore) return [];
+    const all = await decisionsStore.list();
+    return all.sort((a, b) => String(b.decidedAt).localeCompare(String(a.decidedAt)));
   }
 
   async function listPending() {
     return approvalsStore.list();
   }
 
-  return { execute, approve, listPending };
+  return { execute, approve, reject, listPending, listDecisions };
 }

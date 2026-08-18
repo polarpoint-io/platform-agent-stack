@@ -127,7 +127,7 @@ export function createTeamsAdapter({ config, deps }) {
     }
 
     try {
-      await executor.approve(approvalId);
+      await executor.approve(approvalId, { actor: user, channel: "teams" });
       await context.sendActivity(`Approved by ${context.activity.from?.name || user} and executed. (${approvalId})`);
     } catch (err) {
       await context.sendActivity(

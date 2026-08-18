@@ -28,7 +28,7 @@ import {
   chatConnected,
 } from "./metrics.js";
 
-const BRIDGE_VERSION = process.env.BRIDGE_VERSION || "0.10.0";
+const BRIDGE_VERSION = process.env.BRIDGE_VERSION || "0.11.0";
 
 async function main() {
   const config = loadConfig();
@@ -43,7 +43,7 @@ async function main() {
   );
   const approvalsStore = state.approvals;
   const jobs = createJobs(state.jobs);
-  const executor = createExecutor({ policy, backends, slackWebhookUrl: config.slackWebhookUrl, notifySlack, approvalsStore, resultChecks: config.resultChecks });
+  const executor = createExecutor({ policy, backends, slackWebhookUrl: config.slackWebhookUrl, notifySlack, approvalsStore, decisionsStore: state.decisions, resultChecks: config.resultChecks });
 
   // Anything left RUNNING belongs to a worker that died. Requeue before
   // starting our own, or those jobs are lost silently.
@@ -189,10 +189,63 @@ async function main() {
   // as 404, and a tool-level rejection came back as 200 with the error
   // buried in result.content, so an approver could not tell the
   // difference between done and not done.
-  app.post("/approvals/:id/approve", requireToken, async (req, res) => {
+  // WHO decided. The bearer token authorises the call but cannot say who sent
+  // it, so the name is self-asserted - and required, because an audit row
+  // reading "unknown" is barely an audit row. Recorded with actorVerified:false
+  // so a reader can tell it from a Slack identity the platform actually
+  // validated. Real attribution needs OIDC; this is the honest interim.
+  function actorOf(req) {
+    return String(req.body?.actor || req.get?.("x-approver") || "").trim();
+  }
+  function requireActor(req, res) {
+    const actor = actorOf(req);
+    if (!actor) {
+      res.status(400).json({
+        error:
+          "an actor is required: send {\"actor\":\"you@example.com\"} or an X-Approver header. " +
+          "The token says the call is allowed; it cannot say who made it, and a tier-3 decision " +
+          "with nobody's name on it is not auditable.",
+      });
+      return null;
+    }
+    return actor;
+  }
+
+  // Declining is a decision, and until this existed the only way to clear an
+  // unwanted approval was deleting it out of MongoDB - leaving no record that a
+  // human had considered it and said no.
+  app.post("/approvals/:id/reject", requireToken, async (req, res) => {
+    const actor = requireActor(req, res);
+    if (!actor) return;
     try {
-      const result = await executor.approve(req.params.id);
-      res.json({ result });
+      const out = await executor.reject(req.params.id, {
+        actor,
+        reason: req.body?.reason,
+        channel: "http",
+      });
+      res.json(out);
+    } catch (err) {
+      if (err.code === "NO_SUCH_APPROVAL") return res.status(404).json({ error: err.message });
+      console.error(`[reject] ${err.stack}`);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // The audit trail: what humans decided, approved and rejected alike.
+  app.get("/approvals/decisions", requireToken, async (_req, res) => {
+    res.json(await executor.listDecisions());
+  });
+
+  app.post("/approvals/:id/approve", requireToken, async (req, res) => {
+    const actor = requireActor(req, res);
+    if (!actor) return;
+    try {
+      const result = await executor.approve(req.params.id, {
+        actor,
+        reason: req.body?.reason,
+        channel: "http",
+      });
+      res.json({ result, actor });
     } catch (err) {
       if (err.code === "NO_SUCH_APPROVAL") {
         return res.status(404).json({ error: err.message });
