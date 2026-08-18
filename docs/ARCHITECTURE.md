@@ -204,14 +204,53 @@ sitting in the middle of production access. Enterprise clients can run it in AKS
 with a Teams bot; the same chart runs in a home lab with Slack. The ITSM backend
 is swappable in a commit.
 
+### Production hardening
+
+Three of the four blockers identified on 2026-08-18 are closed.
+
+**The approval endpoint authenticates.** `POST /approvals/:id/approve` and
+`POST /actions/:verb` both require a bearer token from External Secrets,
+compared in constant time. Both are guarded, not just the first — `/actions/:verb`
+takes a verb by name and skips classification entirely, which is the sharper
+edge of the two and easy to overlook. It **fails closed**: with no token
+configured the routes return `503` and refuse everything, matching how an empty
+`approvers` list means nobody. Chat approvals are unaffected, since the adapters
+hold the executor in-process and never traverse HTTP.
+
+**It runs multiple replicas.** Job claiming was already safe at any replica
+count — `claimOldest` is a single atomic `findOneAndUpdate`. The alert poller was
+not: every replica would poll on its own timer and race to enqueue the same
+firing, and the `seen_alerts` dedupe is a check-then-set, so two replicas can
+both miss and both enqueue. One alert, N tickets. A Mongo lease elects one
+poller; the lease is handed back on shutdown so a rolling deploy doesn't cost 30s
+of unwatched alerts, and a store error stands the leader **down** rather than
+letting it assume it still leads. `platform_agent_leader` should sum to exactly
+1 across replicas — 0 means nothing is polling, above 1 is split brain.
+
+Scaling above one replica **requires durable state**. With `MONGO_URI` unset the
+store falls back to in-memory and each replica gets its own queue, its own
+approvals and its own belief that it leads.
+
+**Alerts can be pushed as well as polled.** Polling dials out and needs no
+exposure, which is the right default on a tailnet-only estate and the only option
+when Grafana can't reach you. A webhook is lower latency, costs nothing while
+quiet, and needs no leader election at all — the Service delivers each POST to
+exactly one replica, which is precisely what the lease exists to arrange. The
+trade is a public authenticated endpoint, so it mounts on the same separate
+listener as the Teams route and fails closed without its own token. Both intakes
+share the fingerprint dedupe, so running both cannot double-triage.
+
+The remaining blocker is commercial: the Freshservice account is suspended, so
+no ITSM action can execute regardless of policy.
+
 ### Being honest about the limits
 
 - Classification is an LLM judgement and can misroute; the tiers, not the
   classifier, are what make that safe.
 - It is only as good as its backends — today's test found a suspended ITSM
   account that would have blocked every ticket action.
-- `/approvals/:id/approve` on the private port authenticates nothing. The
-  NetworkPolicy is the entire access control today. That is deliberate and
-  documented, but it is the thing to fix before this carries production ITSM.
+- The approval token is a shared secret, so it identifies *a* holder, not *which*
+  person. Chat approvals give per-person attribution via `chat.approvers`; the
+  HTTP path does not. An OIDC/JWT guard would, and is the natural next step.
 - The value depends on tiering being maintained honestly. A team that promotes
   everything to tier 1 to reduce friction has bought nothing.

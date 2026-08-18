@@ -128,11 +128,16 @@ export const backendReady = new Gauge("platform_agent_backend_ready", "1 when an
 export const stateDurable = new Gauge("platform_agent_state_durable", "1 when approvals and jobs are MongoDB-backed, 0 when degraded to memory");
 export const chatConnected = new Gauge("platform_agent_chat_connected", "1 when the chat front door is running", ["provider"]);
 export const alertPollerEnabled = new Gauge("platform_agent_alert_poller_enabled", "1 when the Grafana alert poller is running");
+// Should sum to exactly 1 across replicas. 0 means nothing is polling; >1 means
+// two replicas both believe they lead, which is the split-brain to alert on.
+export const leaderStatus = new Gauge("platform_agent_leader", "1 on the replica currently holding the named lease", ["lease"]);
+export const authRefusals = new Counter("platform_agent_auth_refusals_total", "Requests refused by the approval-token guard", ["reason"]);
 
 // --- alert poller ---
 export const alertPolls = new Counter("platform_agent_alert_polls_total", "Grafana alert polls by outcome", ["outcome"]);
 export const alertLastSuccess = new Gauge("platform_agent_alert_last_success_timestamp_seconds", "Unix time of the last successful alert poll");
 export const alertsQueued = new Counter("platform_agent_alerts_queued_total", "Alerts that opened a triage job");
+export const alertWebhooks = new Counter("platform_agent_alert_webhooks_total", "Grafana webhook deliveries by outcome", ["outcome"]);
 
 // --- triage work ---
 export const triageJobs = new Counter("platform_agent_triage_jobs_total", "Triage jobs by lane and terminal status", ["lane", "status"]);

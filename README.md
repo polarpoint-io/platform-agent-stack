@@ -79,6 +79,53 @@ approval*.
 
 ![Gated action](images/external/c4-dynamic-gated-action.png)
 
+## Alert intake — poll, push, or both
+
+| | Polling | Webhook |
+|---|---|---|
+| Direction | Dials **out** to Grafana | Grafana POSTs **in** |
+| Exposure | None | Public authenticated endpoint |
+| Latency | Up to `pollSeconds` | Immediate |
+| Replicas | Needs a leader lease | None — the Service picks one |
+| Use when | Grafana can't reach you; tailnet-only estates | You can expose one route and want lower latency |
+
+Both may run at once. They share the fingerprint dedupe, so the same firing
+arriving by both paths still produces one triage job.
+
+The webhook mounts on the **public** listener next to the Teams route, never on
+the main port, and fails closed — with no `ALERTS_WEBHOOK_TOKEN` it isn't
+mounted at all, because an unauthenticated public route that enqueues LLM work
+and raises tickets is an open invitation. In Grafana: *Alerting → Contact points
+→ Webhook*, pointed at the `-endpoint` Service with an `Authorization: Bearer
+<token>` header.
+
+## Security
+
+`POST /approvals/:id/approve` and `POST /actions/:verb` require a bearer token
+from External Secrets, compared in constant time. Both are guarded — the second
+takes a verb by name and skips classification, which is the sharper edge.
+
+**Fails closed.** With no `APPROVAL_TOKEN` the routes return `503` and refuse
+everything, matching how an empty `approvers` list means nobody. The secret is
+marked `optional` in `envFrom` on purpose: an unseeded credential should disable
+the feature it guards, not leave the pod in `CreateContainerConfigError` with
+triage, chat and investigation down as collateral.
+
+Chat approvals are unaffected — the adapters hold the executor in-process and
+never traverse HTTP, so they stay gated by `chat.approvers`.
+
+## Scaling
+
+`replicaCount` is safe above 1. Triage jobs are claimed with a single atomic
+`findOneAndUpdate`, so two replicas cannot take the same job. The alert poller
+is the exception and is leader-elected via a Mongo lease — without it, every
+replica polls and races to enqueue the same firing, turning one alert into N
+tickets.
+
+**Requires durable state.** With `MONGO_URI` unset the store degrades to
+in-memory and each replica gets its own queue, its own approvals and its own
+belief that it leads. Check `/status` reports `durableState: true` first.
+
 ## Metrics
 
 Prometheus exposition on `:9090/metrics`, on its own listener with nothing else
@@ -102,6 +149,8 @@ The series worth alerting on:
 | `platform_agent_actions_total{verb,tier,action,outcome}` | The audit series — what was executed, parked, drafted or refused |
 | `platform_agent_triage_duration_seconds{lane}` | The infra lane runs 30–60s; a change here is the first sign of trouble |
 | `platform_agent_event_loop_lag_seconds` | The worker is serial, so a wedged job shows as lag before it shows as failure |
+| `platform_agent_leader{lease}` | Should sum to exactly 1 across replicas. 0 means nothing is polling; above 1 is split brain |
+| `platform_agent_auth_refusals_total{reason}` | `not_configured` is your own misconfiguration; `bad_token` is someone else |
 
 Every label is bounded — verbs come from `risk-tiers.yaml`, backends from
 `.mcp.json`, lanes are a closed set. Nothing is labelled with a job or ticket

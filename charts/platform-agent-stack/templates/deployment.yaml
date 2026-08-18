@@ -33,9 +33,11 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
-            {{- if .Values.chat.endpoint.enabled }}
-            # Only the inbound chat route is served here. Kept apart from http
-            # so an Ingress can be pointed at one without reaching the other.
+            {{- if or .Values.chat.endpoint.enabled .Values.alerts.webhook.enabled }}
+            # The public listener. Only routes that MUST be reachable from
+            # outside are mounted here - the inbound chat route, and the Grafana
+            # alert webhook. Kept apart from http so an Ingress can be pointed at
+            # one without reaching the other.
             - name: chat
               containerPort: {{ .Values.chat.endpoint.port }}
             {{- end }}
@@ -49,10 +51,23 @@ spec:
           env:
             - name: PORT
               value: "{{ .Values.service.port }}"
-            {{- if .Values.chat.endpoint.enabled }}
+            {{- if or .Values.chat.endpoint.enabled .Values.alerts.webhook.enabled }}
             - name: PUBLIC_PORT
               value: "{{ .Values.chat.endpoint.port }}"
             {{- end }}
+            {{- if .Values.alerts.webhook.enabled }}
+            - name: ALERTS_WEBHOOK_ENABLED
+              value: "true"
+            - name: ALERTS_WEBHOOK_PATH
+              value: "{{ .Values.alerts.webhook.path }}"
+            {{- end }}
+            # Identifies this replica when contending for the alert-poller
+            # lease. Without it every replica calls itself the same thing and
+            # they would each renew each other's lease, so all of them poll.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: METRICS_ENABLED
               value: "{{ .Values.metrics.enabled }}"
             {{- if .Values.metrics.enabled }}
@@ -138,6 +153,15 @@ spec:
             {{- range $name, $cfg := .Values.externalSecrets.keys }}
             - secretRef:
                 name: {{ include "platform-agent-stack.fullname" $ }}-{{ $name }}
+                {{- if $cfg.optional }}
+                # Not yet seeded is a DEGRADED state, not a broken one. Without
+                # this the pod sits in CreateContainerConfigError and the whole
+                # bridge is down because one optional credential is missing -
+                # which for the approval token means a missing secret takes out
+                # triage, chat and investigation too. Marked optional, the
+                # feature it guards fails closed on its own and says why.
+                optional: true
+                {{- end }}
             {{- end }}
             {{- if .Values.mongoState.enabled }}
             - secretRef:

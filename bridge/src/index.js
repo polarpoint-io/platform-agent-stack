@@ -16,7 +16,9 @@ import { classify } from "./llm.js";
 import { handleInfraRequest } from "./sreAgent.js";
 import { handleItsmRequest } from "./itsmAgent.js";
 import { createChatAdapter } from "./chat/index.js";
-import { startAlertPoller } from "./alerts.js";
+import { startAlertPoller, createAlertWebhook } from "./alerts.js";
+import { startLeaderElection } from "./leader.js";
+import { requireApprovalToken } from "./auth.js";
 import {
   collect as collectMetrics,
   CONTENT_TYPE as METRICS_CONTENT_TYPE,
@@ -26,7 +28,7 @@ import {
   chatConnected,
 } from "./metrics.js";
 
-const BRIDGE_VERSION = process.env.BRIDGE_VERSION || "0.8.0";
+const BRIDGE_VERSION = process.env.BRIDGE_VERSION || "0.9.0";
 
 async function main() {
   const config = loadConfig();
@@ -167,7 +169,11 @@ async function main() {
   // useful for testing a mapping/tier without going through the LLM
   // classifier, and for anything that already knows what it wants
   // (e.g. a Slack slash command bound to a specific action).
-  app.post("/actions/:verb", async (req, res) => {
+  // Guards the two routes that can change something. Declared once and applied
+  // to both, so a future route cannot quietly land on the unguarded side.
+  const requireToken = requireApprovalToken(config.approvalToken);
+
+  app.post("/actions/:verb", requireToken, async (req, res) => {
     try {
       const result = await executor.execute(req.params.verb, req.body?.args || {}, { summary: req.body?.summary });
       res.json(result);
@@ -183,7 +189,7 @@ async function main() {
   // as 404, and a tool-level rejection came back as 200 with the error
   // buried in result.content, so an approver could not tell the
   // difference between done and not done.
-  app.post("/approvals/:id/approve", async (req, res) => {
+  app.post("/approvals/:id/approve", requireToken, async (req, res) => {
     try {
       const result = await executor.approve(req.params.id);
       res.json({ result });
@@ -214,21 +220,25 @@ async function main() {
   // Splitting the listener is what lets an operator expose exactly one route.
   // /api/messages can be public because the Bot Framework validates a JWT on
   // every request; the rest of the bridge cannot.
+  // TWO things may need it now - a chat adapter that cannot dial out, and the
+  // Grafana alert webhook - so the app is built once if EITHER asks, and each
+  // mounts only its own route. Still nothing else: no /triage, no /approvals.
+  const alertWebhookWanted = config.alerts.webhook.enabled;
+  const needsPublic = Boolean(chat?.needsPublicEndpoint) || alertWebhookWanted;
+
   let publicServer = null;
+  let publicApp = null;
+  if (needsPublic) {
+    publicApp = express();
+    publicApp.use(express.json({ limit: "1mb" }));
+    // A health check so an Ingress or probe has something to hit without
+    // being pointed at the private port.
+    publicApp.get("/health", (_req, res) => res.json({ status: "ok" }));
+  }
+
   if (chat) {
     if (chat.needsPublicEndpoint) {
-      const publicApp = express();
-      publicApp.use(express.json());
-      // A health check so an Ingress or probe has something to hit without
-      // being pointed at the private port.
-      publicApp.get("/health", (_req, res) => res.json({ status: "ok" }));
       await chat.start({ app: publicApp });
-      publicServer = publicApp.listen(config.publicPort, "0.0.0.0", () => {
-        console.log(
-          `[chat] ${chat.name} inbound endpoint on 0.0.0.0:${config.publicPort} - ` +
-          `expose ONLY this port; ${config.port} has no authentication`
-        );
-      });
     } else {
       // Slack dials out. It never needs a route, so it never gets an app.
       await chat.start();
@@ -239,12 +249,52 @@ async function main() {
     chatConnected.set({ provider: config.chat.provider || "none" }, 0);
   }
 
+  if (alertWebhookWanted) {
+    // Authenticated, and FAILS CLOSED with no token. This route enqueues work
+    // that costs LLM spend and can raise tickets; unauthenticated on a public
+    // endpoint it would be an open invitation.
+    if (!config.alerts.webhook.token) {
+      console.error(
+        "[alerts] webhook is enabled but ALERTS_WEBHOOK_TOKEN is not set - refusing to mount an " +
+        "unauthenticated public route that enqueues triage work. Set externalSecrets.keys.alerts."
+      );
+    } else {
+      publicApp.post(
+        config.alerts.webhook.path,
+        requireApprovalToken(config.alerts.webhook.token),
+        createAlertWebhook({ config: config.alerts, jobs, store: state.alerts })
+      );
+      console.log(`[alerts] webhook mounted at ${config.alerts.webhook.path} on the PUBLIC listener`);
+    }
+  }
+
+  if (needsPublic) {
+    publicServer = publicApp.listen(config.publicPort, "0.0.0.0", () => {
+      console.log(
+        `[public] inbound endpoint on 0.0.0.0:${config.publicPort} - ` +
+        `expose ONLY this port; ${config.port} has no authentication`
+      );
+    });
+  }
+
+  // Exactly one replica polls. Job claiming is atomic so the worker needs no
+  // election, but the poller does: N replicas would each poll Grafana and race
+  // to enqueue the same firing, turning one alert into N tickets.
+  const election = startLeaderElection({
+    leases: state.leases,
+    name: "alert-poller",
+    holder: config.leader.holder,
+    ttlMs: config.leader.ttlMs,
+    renewMs: config.leader.renewMs,
+  });
+
   // Nothing else notices anything on its own - every other request is a human
   // typing in a chat client.
   const alertPoller = startAlertPoller({
     config: config.alerts,
     jobs,
     store: state.alerts,
+    isLeader: () => election.isLeader(),
   });
 
   const sampler = startProcessSampling();
@@ -290,6 +340,9 @@ async function main() {
       worker.stop();
       alertPoller.stop();
       sampler.stop();
+      // Hand back the lease so the next replica starts polling immediately
+      // rather than waiting out the TTL.
+      await election.stop().catch(() => {});
       await chat?.stop?.().catch(() => {});
       server.close();
       publicServer?.close();

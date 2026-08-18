@@ -18,7 +18,7 @@
 // the useful ones drown. Label the handful of rules that genuinely want an agent
 // looking at them.
 
-import { alertPolls, alertLastSuccess, alertsQueued, alertPollerEnabled } from "./metrics.js";
+import { alertPolls, alertLastSuccess, alertsQueued, alertPollerEnabled, alertWebhooks } from "./metrics.js";
 
 const SEEN_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -57,6 +57,31 @@ export function describeAlert(alert) {
 }
 
 /**
+ * Triage anything firing that we have not already triaged.
+ *
+ * Shared by BOTH intake paths - the poller and the webhook - so that choosing
+ * one or the other is a delivery decision and nothing else. The opt-in label
+ * filter, the fingerprint dedupe and the enqueued text are identical either way;
+ * if they diverged, switching mechanism would quietly change which alerts
+ * produce tickets.
+ */
+export async function ingestFiring({ alerts, config, jobs, store, now = Date.now }) {
+  const firing = alerts.filter((a) => selected(a, config.labelKey, config.labelValue));
+  const queued = [];
+  for (const alert of firing) {
+    const id = fingerprintOf(alert);
+    if (await store.get(id)) continue;          // already triaged this firing
+    const jobId = await jobs.enqueue({
+      text: describeAlert(alert),
+      source: { type: "alert", fingerprint: id, labels: alert.labels || {} },
+    });
+    await store.set(id, { firstSeen: new Date(now()).toISOString(), jobId });
+    queued.push({ id, jobId, name: (alert.labels || {}).alertname });
+  }
+  return { selected: firing.length, queued };
+}
+
+/**
  * One pass: fetch what is firing, triage anything new, forget what has resolved.
  *
  * Split out from the loop so it can be tested without timers, and so a single
@@ -73,20 +98,10 @@ export async function pollOnce({ config, jobs, store, fetchImpl = fetch, now = D
   const alerts = await res.json();
   if (!Array.isArray(alerts)) throw new Error("alert fetch returned a non-array");
 
-  const firing = alerts.filter((a) => selected(a, config.labelKey, config.labelValue));
-  const firingIds = new Set(firing.map(fingerprintOf));
-  const queued = [];
-
-  for (const alert of firing) {
-    const id = fingerprintOf(alert);
-    if (await store.get(id)) continue;          // already triaged this firing
-    const jobId = await jobs.enqueue({
-      text: describeAlert(alert),
-      source: { type: "alert", fingerprint: id, labels: alert.labels || {} },
-    });
-    await store.set(id, { firstSeen: new Date(now()).toISOString(), jobId });
-    queued.push({ id, jobId, name: (alert.labels || {}).alertname });
-  }
+  const { selected: selectedCount, queued } = await ingestFiring({ alerts, config, jobs, store, now });
+  const firingIds = new Set(
+    alerts.filter((a) => selected(a, config.labelKey, config.labelValue)).map(fingerprintOf)
+  );
 
   // Forget anything that has stopped firing, so a recurrence is triaged again
   // rather than suppressed forever. Also expire stragglers: an alert that
@@ -99,11 +114,69 @@ export async function pollOnce({ config, jobs, store, fetchImpl = fetch, now = D
       forgotten++;
     }
   }
-  return { checked: alerts.length, selected: firing.length, queued, forgotten };
+  return { checked: alerts.length, selected: selectedCount, queued, forgotten };
+}
+
+/**
+ * The push alternative to polling: Grafana POSTs here when an alert fires.
+ *
+ * WHY BOTH EXIST. Polling dials out, so it needs no exposure at all - the right
+ * default on a tailnet-only estate, and the only option when Grafana genuinely
+ * cannot reach you. A webhook is lower latency (no up-to-pollSeconds delay),
+ * costs nothing while quiet, and needs NO leader election: the Service delivers
+ * each POST to exactly one replica, which is the thing the poller needs a Mongo
+ * lease to arrange. The trade is that it requires a public, authenticated
+ * endpoint. Pick per environment; enabling both is supported and harmless
+ * because the fingerprint dedupe is shared.
+ *
+ * MOUNTED ON THE PUBLIC LISTENER, never the private one - same reasoning as
+ * Teams. And it authenticates: an unauthenticated route that enqueues work
+ * would let anyone on the internet spend LLM budget and raise tickets.
+ *
+ * Grafana's unified-alerting payload is {alerts:[{status,labels,annotations,
+ * fingerprint}]}. Resolved alerts are FORGOTTEN rather than ignored, so a
+ * recurrence triages again instead of being suppressed forever - matching what
+ * the poller does when an alert stops appearing.
+ */
+export function createAlertWebhook({ config, jobs, store, now = Date.now }) {
+  return async function handle(req, res) {
+    const body = req.body || {};
+    const incoming = Array.isArray(body.alerts) ? body.alerts : null;
+    if (!incoming) {
+      alertWebhooks.inc({ outcome: "bad_payload" });
+      return res.status(400).json({ error: "expected a Grafana webhook payload with an alerts array" });
+    }
+
+    try {
+      const firing = incoming.filter((a) => (a.status || "firing") === "firing");
+      const resolved = incoming.filter((a) => a.status === "resolved");
+
+      const { queued } = await ingestFiring({ alerts: firing, config, jobs, store, now });
+
+      let forgotten = 0;
+      for (const alert of resolved) {
+        const id = fingerprintOf(alert);
+        if (await store.get(id)) {
+          await store.delete(id);
+          forgotten++;
+        }
+      }
+
+      for (const q of queued) console.log(`[alerts] webhook queued ${q.jobId} for ${q.name} (${q.id})`);
+      alertWebhooks.inc({ outcome: "accepted" });
+      alertsQueued.inc({}, queued.length);
+      // 202: the work is queued, not done. Grafana only needs to know it landed.
+      return res.status(202).json({ received: incoming.length, queued: queued.length, forgotten });
+    } catch (err) {
+      console.error(`[alerts] webhook failed: ${err.message}`);
+      alertWebhooks.inc({ outcome: "error" });
+      return res.status(500).json({ error: err.message });
+    }
+  };
 }
 
 /** Polls until stopped. Returns a handle with .stop(). */
-export function startAlertPoller({ config, jobs, store, fetchImpl = fetch }) {
+export function startAlertPoller({ config, jobs, store, fetchImpl = fetch, isLeader = () => true }) {
   if (!config.enabled) {
     console.log("[alerts] disabled - nothing delivers alerts to /triage");
     alertPollerEnabled.set({}, 0);
@@ -120,6 +193,16 @@ export function startAlertPoller({ config, jobs, store, fetchImpl = fetch }) {
   let stopped = false;
   const run = async () => {
     try {
+      // Followers keep their timer running but do not poll, so a replica that
+      // wins the lease later starts within one interval rather than needing a
+      // restart. Not counted as a success: a follower skipping is not evidence
+      // that Grafana is reachable, and treating it as such would keep
+      // alert_last_success_timestamp fresh on every replica while the actual
+      // leader was failing.
+      //
+      // Returns without scheduling - the finally block owns the timer, and
+      // scheduling here too would start a second one on every pass.
+      if (!isLeader()) return;
       const r = await pollOnce({ config, jobs, store, fetchImpl });
       // A poller that fails silently is indistinguishable from a quiet estate.
       // The success TIMESTAMP is the one to alert on: polls_total going flat is

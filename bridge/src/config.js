@@ -97,6 +97,19 @@ export function loadConfig() {
       // job and then a ticket, and the ones that matter drown.
       labelKey: process.env.ALERTS_LABEL_KEY || "agent",
       labelValue: process.env.ALERTS_LABEL_VALUE || "triage",
+      // The PUSH alternative to polling. Lower latency and needs no leader
+      // election - the Service delivers each POST to one replica, which is what
+      // the poller needs a lease to arrange. Costs a public endpoint, so it is
+      // off by default and authenticated when on. Both may run at once; the
+      // fingerprint dedupe is shared, so they cannot double-triage.
+      webhook: {
+        enabled: (process.env.ALERTS_WEBHOOK_ENABLED || "false").toLowerCase() === "true",
+        path: process.env.ALERTS_WEBHOOK_PATH || "/alerts/webhook",
+        // Its own secret, not APPROVAL_TOKEN: this one is handed to Grafana and
+        // lives in a contact point, so it should be rotatable on its own and
+        // must not also unlock tier-3 approvals.
+        token: process.env.ALERTS_WEBHOOK_TOKEN || "",
+      },
     },
 
     // Chat front door. "none" (default), "slack" or "teams" - see chat/index.js
@@ -136,6 +149,22 @@ export function loadConfig() {
       enabled: (process.env.METRICS_ENABLED || "true").toLowerCase() === "true",
       port: parseInt(process.env.METRICS_PORT || "9090", 10),
       path: process.env.METRICS_PATH || "/metrics",
+    },
+
+    // Shared secret guarding the two routes that can change something:
+    // /approvals/:id/approve and /actions/:verb. EMPTY DISABLES THEM - a
+    // missing credential must never read as "no authentication required".
+    // Chat approvals are unaffected; they never traverse HTTP.
+    approvalToken: process.env.APPROVAL_TOKEN || "",
+
+    // Which replica polls Grafana. Job claiming is atomic so it needs no
+    // election, but the poller does - see leader.js.
+    leader: {
+      // Pod name under the downward API; falls back to something unique so two
+      // processes on one machine still contend correctly.
+      holder: process.env.POD_NAME || `${process.env.HOSTNAME || "local"}-${process.pid}`,
+      ttlMs: parseInt(process.env.LEADER_TTL_MS || "30000", 10),
+      renewMs: parseInt(process.env.LEADER_RENEW_MS || "10000", 10),
     },
   };
 }

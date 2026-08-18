@@ -1,0 +1,24 @@
+{{- if gt (int .Values.replicaCount) 1 }}
+{{/*
+Keeps a replica serving through a voluntary disruption - a node drain, a
+cluster upgrade, an eviction.
+
+Only rendered above one replica, and deliberately so: a PDB with minAvailable
+on a single-replica Deployment BLOCKS node drains indefinitely rather than
+protecting anything, which turns a routine upgrade into an operator wondering
+why the drain hangs.
+
+A triage job interrupted mid-flight is not lost - requeueStale() puts anything
+left RUNNING back on the queue at boot - but an investigation that has already
+spent 30s of LLM time is worth not throwing away.
+*/}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "platform-agent-stack.fullname" . }}
+  labels: {{- include "platform-agent-stack.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {{- include "platform-agent-stack.selectorLabels" . | nindent 6 }}
+{{- end }}

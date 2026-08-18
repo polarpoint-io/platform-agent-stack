@@ -109,11 +109,60 @@ export function rewriteMongoHost(uri, host) {
   return parsed.toString();
 }
 
+/**
+ * Compare-and-swap lease, used to elect one alert poller across replicas.
+ *
+ * Job claiming is already safe at any replica count - claimOldest is a single
+ * atomic findOneAndUpdate. The POLLER is not: every replica would poll Grafana
+ * on its own timer and race to enqueue the same firing, and seen_alerts dedupe
+ * is a check-then-set, so two replicas can both miss and both enqueue.
+ *
+ * A lease is the smallest thing that fixes it. It is deliberately NOT a
+ * general-purpose lock: losing it briefly costs at most a skipped poll, and the
+ * next poll picks up whatever is still firing.
+ */
+function mongoLeases(ready) {
+  return {
+    async acquire(name, holder, ttlMs, now = Date.now()) {
+      const col = await ready;
+      try {
+        await col.findOneAndUpdate(
+          // Take it if we already hold it (renewal) or if the incumbent's lease
+          // has expired. Anything else means someone live holds it.
+          { _id: name, $or: [{ holder }, { expiresAt: { $lte: new Date(now) } }] },
+          { $set: { holder, expiresAt: new Date(now + ttlMs) } },
+          { upsert: true, returnDocument: "after" }
+        );
+        return true;
+      } catch (err) {
+        // Filter matched nothing so upsert tried to INSERT, and _id already
+        // exists: a live lease is held elsewhere. That is a normal outcome for
+        // a follower, not an error.
+        if (err?.code === 11000) return false;
+        throw err;
+      }
+    },
+    async release(name, holder) {
+      const col = await ready;
+      await col.deleteOne({ _id: name, holder });
+    },
+  };
+}
+
+/** Single process - there is nobody to contend with, so it always leads. */
+function inMemoryLeases() {
+  return {
+    async acquire() { return true; },
+    async release() {},
+  };
+}
+
 function inMemoryStore(reason) {
   return {
     approvals: inMemoryCollection(),
     jobs: inMemoryCollection(),
     alerts: inMemoryCollection(),
+    leases: inMemoryLeases(),
     durable: false,
     degradedReason: reason || null,
     async close() {},
@@ -158,6 +207,7 @@ export async function createStateStore(mongoUri, { connectTimeoutMs = 10000 } = 
       // in memory, a restart re-triages everything currently firing, which on a
       // bad morning is a burst of duplicate tickets.
       alerts: mongoCollection(ready, "seen_alerts"),
+      leases: mongoLeases(ready.then((c) => c.db().collection("leader_leases"))),
       durable: true,
       degradedReason: null,
       async close() {

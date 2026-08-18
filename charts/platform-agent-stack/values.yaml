@@ -10,14 +10,21 @@ llmProvider: anthropic
 image:
   # Built and pushed by .github/workflows/build-bridge-image.yml from bridge/.
   repository: ghcr.io/polarpoint-io/platform-agent-bridge
-  tag: "0.8.0"
+  tag: "0.9.0"
   pullPolicy: IfNotPresent
 
 # Per-tool-call timeout for MCP requests. The SDK default of 60s is too
 # short for tools that call an LLM and then a git forge.
 mcpToolTimeoutMs: 180000
 
-replicaCount: 1
+# Safe above 1. Triage jobs are claimed with a single atomic findOneAndUpdate,
+# so two replicas cannot take the same job, and the alert poller is leader-
+# elected via a Mongo lease so only one replica polls Grafana.
+#
+# Above 1 REQUIRES durable state - with MONGO_URI unset the store falls back to
+# in-memory, and each replica then has its own queue, its own approvals and its
+# own idea that it leads. Check /status reports durableState:true before scaling.
+replicaCount: 2
 
 service:
   type: ClusterIP
@@ -116,11 +123,14 @@ chat:
 # Grafana alerts -> /triage. The only path by which the agent notices something
 # without a human asking; everything else is someone typing in a chat client.
 #
-# It POLLS Grafana rather than receiving a webhook. Alerting happens in Grafana
-# Cloud, outside the estate, and the bridge is tailnet-only behind a deny-all
+# TWO intakes, and either or both may be used - see `webhook` below.
+#
+# POLLING is the default and dials OUT. Alerting happens in Grafana Cloud,
+# outside the estate, and the bridge is tailnet-only behind a deny-all
 # NetworkPolicy with no authentication of its own - so nothing out there can
-# reach in. Polling dials out the same way Slack's Socket Mode does: no public
-# endpoint, no inbound auth, no new attack surface.
+# reach in. Polling works the same way Slack's Socket Mode does: no public
+# endpoint, no inbound auth, no new attack surface. It is the only option when
+# Grafana genuinely cannot reach you.
 #
 # GRAFANA_URL and GRAFANA_TOKEN come from ESO like every other credential - add
 # a `grafana` entry to externalSecrets.keys. The token only needs to read
@@ -133,6 +143,28 @@ alerts:
   # Label the handful of rules that genuinely want an agent looking at them.
   labelKey: agent
   labelValue: triage
+
+  # PUSH intake, as an alternative or a complement to polling above.
+  #
+  # Polling dials out and needs no exposure at all, which is the right default
+  # here and the only option when Grafana cannot reach you. A webhook is lower
+  # latency (no up-to-pollSeconds delay), costs nothing while quiet, and needs
+  # NO leader election - the Service delivers each POST to exactly one replica,
+  # which is the thing the poller needs a Mongo lease to arrange.
+  #
+  # The cost is a public, authenticated endpoint. It mounts on the SAME separate
+  # listener as the Teams route, never on the main port, and it FAILS CLOSED:
+  # with no token the route is not mounted at all, because an unauthenticated
+  # public route that enqueues LLM work and raises tickets is an open invitation.
+  #
+  # Both intakes may run at once. They share the fingerprint dedupe, so the same
+  # firing arriving via both still produces one triage job.
+  #
+  # In Grafana: Alerting -> Contact points -> Webhook, URL pointing at the
+  # -endpoint Service, with an Authorization header of "Bearer <token>".
+  webhook:
+    enabled: false
+    path: /alerts/webhook
 
 # External Secrets Operator. Nothing secret is committed to this repo;
 # the chart only names where to find it.
@@ -158,6 +190,25 @@ externalSecrets:
     confluence:
       remoteKey: platform-agent-stack-confluence
       properties: [CONFLUENCE_BASE_URL, CONFLUENCE_USER, CONFLUENCE_API_TOKEN]
+    # Guards POST /approvals/:id/approve and POST /actions/:verb - the two
+    # routes that can change something. WITHOUT THIS, BOTH ROUTES RETURN 503
+    # and refuse everything: a missing credential must never read as "no
+    # authentication required". Chat approvals are unaffected, since they hold
+    # the executor in-process and are gated by chat.approvers instead.
+    approval:
+      remoteKey: platform-agent-stack-approval
+      properties: [APPROVAL_TOKEN]
+      # Degrade rather than crash if it has not been seeded yet: the guarded
+      # routes return 503 and say why, instead of the whole bridge failing to
+      # start and taking triage, chat and investigation down with it.
+      optional: true
+    # Only needed when alerts.webhook.enabled. Separate from APPROVAL_TOKEN on
+    # purpose: this one is handed to Grafana and lives in a contact point, so it
+    # must be rotatable on its own and must not also unlock tier-3 approvals.
+    alerts-webhook:
+      remoteKey: platform-agent-stack-alerts-webhook
+      properties: [ALERTS_WEBHOOK_TOKEN]
+      optional: true
 
 resources:
   requests: { cpu: 250m, memory: 512Mi }
@@ -175,7 +226,20 @@ securityContext:
 
 nodeSelector: {}
 tolerations: []
-affinity: {}
+
+# Spread replicas across nodes. Soft rather than required: on a small cluster,
+# or one where taints leave few schedulable nodes, a hard rule would leave the
+# second replica Pending forever and quietly halve the availability it was
+# added to provide.
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          topologyKey: kubernetes.io/hostname
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: platform-agent-stack
 
 # Optional: durable state for the bridge's pending tier-3 approvals,
 # provisioned by mongostate-crossplane's MongoState claim. Crossplane

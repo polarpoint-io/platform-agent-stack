@@ -1,4 +1,4 @@
-{{- if .Values.chat.endpoint.enabled }}
+{{- if or .Values.chat.endpoint.enabled .Values.alerts.webhook.enabled }}
 {{/*
 A SEPARATE Service for the inbound chat endpoint, so an Ingress can be pointed
 at exactly one route.
