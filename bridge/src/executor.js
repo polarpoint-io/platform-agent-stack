@@ -3,6 +3,7 @@
 // parked and must be explicitly approved via POST /approvals/:id/approve.
 
 import { randomUUID } from "node:crypto";
+import { actions as actionsMetric, approvalDecisions, toolCalls, toolDuration } from "./metrics.js";
 
 // An MCP tool that fails reports it IN the result, as isError, with a
 // 200-shaped response - it does not throw. Returning that verbatim made
@@ -58,16 +59,46 @@ function assertToolOk(backend, tool, result, pattern) {
 // resultChecks: { [backendName]: RegExp } - see config.js, which reads
 // resultIsErrorWhen out of the merged .mcp.json.
 export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack, approvalsStore, resultChecks = {} }) {
+  // Record the decision, not just the call. A tier_3 that parked and a tier_1
+  // that ran are both things an operator needs to count, and only one of them
+  // ever reaches a backend - so counting backend calls alone would make the
+  // gated actions invisible.
+  function recordDecision(verb, decision, outcome) {
+    actionsMetric.inc({
+      verb,
+      tier: decision.tier || "unknown",
+      action: decision.action || "unknown",
+      outcome,
+    });
+  }
+
+  /** Every backend call, timed and counted, in one place. */
+  async function callTimed(backend, tool, args) {
+    const started = process.hrtime.bigint();
+    let outcome = "success";
+    try {
+      return await backends.callTool(backend, tool, args);
+    } catch (err) {
+      outcome = "error";
+      throw err;
+    } finally {
+      toolDuration.observe({ backend, tool }, Number(process.hrtime.bigint() - started) / 1e9);
+      toolCalls.inc({ backend, tool, outcome });
+    }
+  }
+
   async function execute(verb, args, context = {}) {
     const decision = policy.decide(verb);
 
     if (decision.action === "blocked") {
+      recordDecision(verb, decision, "blocked");
       return { ...decision, result: null };
     }
 
     if (decision.action === "draft") {
       const note = `[draft-only] "${verb}" was requested${context.summary ? ` (${context.summary})` : ""} but tier_4 verbs are never auto-executed. A human needs to perform this action directly.`;
       await notifySlack(slackWebhookUrl, note);
+      recordDecision(verb, decision, "drafted");
       return { ...decision, result: null, note };
     }
 
@@ -76,16 +107,27 @@ export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack,
       await approvalsStore.set(id, { verb, args, decision, context, createdAt: new Date().toISOString() });
       const note = `[approval needed] "${verb}"${context.summary ? ` - ${context.summary}` : ""} is waiting for approval. Approve: POST /approvals/${id}/approve`;
       await notifySlack(slackWebhookUrl, note);
+      recordDecision(verb, decision, "parked");
       return { ...decision, result: null, approvalId: id, note };
     }
 
     // tier_1 (silent) or tier_2 (notify) - both execute now.
-    const result = assertToolOk(
-      decision.backend,
-      decision.tool,
-      await backends.callTool(decision.backend, decision.tool, args),
-      resultChecks[decision.backend]
-    );
+    let result;
+    try {
+      result = assertToolOk(
+        decision.backend,
+        decision.tool,
+        await callTimed(decision.backend, decision.tool, args),
+        resultChecks[decision.backend]
+      );
+    } catch (err) {
+      // A backend that rejected the call is a failed action, and it has to
+      // count as one - assertToolOk turns a 200-shaped isError into a throw
+      // precisely so this is not silently a success.
+      recordDecision(verb, decision, "error");
+      throw err;
+    }
+    recordDecision(verb, decision, "success");
     if (decision.notify) {
       const note = `[executed] "${verb}" -> ${decision.backend}.${decision.tool}${context.summary ? ` - ${context.summary}` : ""}`;
       await notifySlack(slackWebhookUrl, note);
@@ -111,7 +153,7 @@ export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack,
       result = assertToolOk(
         pending.decision.backend,
         pending.decision.tool,
-        await backends.callTool(pending.decision.backend, pending.decision.tool, pending.args),
+        await callTimed(pending.decision.backend, pending.decision.tool, pending.args),
         resultChecks[pending.decision.backend]
       );
     } catch (err) {
@@ -119,11 +161,16 @@ export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack,
         slackWebhookUrl,
         `[approval FAILED] "${pending.verb}"${pending.context.summary ? ` - ${pending.context.summary}` : ""}: ${err.message}. Still pending as ${id}.`
       );
+      // "released but the backend refused" is its own outcome. It is the shape
+      // of a suspended ITSM account, and it stays pending - so counting it as a
+      // plain failure would hide that a human decision is still outstanding.
+      approvalDecisions.inc({ outcome: "backend_rejected" });
       err.approvalId = id;
       err.stillPending = true;
       throw err;
     }
 
+    approvalDecisions.inc({ outcome: "executed" });
     await approvalsStore.delete(id);
     await notifySlack(slackWebhookUrl, `[approved & executed] "${pending.verb}"${pending.context.summary ? ` - ${pending.context.summary}` : ""}`);
     return result;

@@ -10,7 +10,7 @@ llmProvider: anthropic
 image:
   # Built and pushed by .github/workflows/build-bridge-image.yml from bridge/.
   repository: ghcr.io/polarpoint-io/platform-agent-bridge
-  tag: "0.7.0"
+  tag: "0.8.0"
   pullPolicy: IfNotPresent
 
 # Per-tool-call timeout for MCP requests. The SDK default of 60s is too
@@ -22,6 +22,20 @@ replicaCount: 1
 service:
   type: ClusterIP
   port: 3000
+
+# Prometheus metrics get their OWN listener and their OWN port, for the same
+# reason the Teams endpoint does: a scraper needs to reach this pod, and the
+# main port serves /approvals/:id/approve, which takes no credentials. Opening
+# port 3000 to the monitoring namespace would let anything running there release
+# a parked tier-3 action. Nothing but /metrics is ever mounted on this port.
+metrics:
+  enabled: true
+  port: 9090
+  path: /metrics
+  # Namespaces whose pods may scrape. Empty means nobody can - same rule as
+  # networkPolicy.allowedNamespaces, and for the same reason.
+  allowedNamespaces:
+    - grafana-alloy
 
 # The bridge has no authentication of its own - this NetworkPolicy is
 # the real access control. Empty means deny-all, not allow-all.

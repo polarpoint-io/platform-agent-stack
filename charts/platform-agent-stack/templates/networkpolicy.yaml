@@ -2,6 +2,8 @@
 # Default-deny ingress, then allow only the named peers. The bridge
 # authenticates nothing on its own (see README "Security" note) - the
 # NetworkPolicy is the actual access control.
+{{- $callers := or .Values.networkPolicy.allowedNamespaces .Values.networkPolicy.allowedPodLabels }}
+{{- $scrapers := and .Values.metrics.enabled .Values.metrics.allowedNamespaces }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -12,14 +14,15 @@ spec:
     matchLabels: {{- include "platform-agent-stack.selectorLabels" . | nindent 6 }}
   policyTypes: [Ingress]
   ingress:
-    {{- if and (not .Values.networkPolicy.allowedNamespaces) (not .Values.networkPolicy.allowedPodLabels) }}
+    {{- if and (not $callers) (not $scrapers) }}
     # No peers configured — deny everything. Intentional: an empty
     # allowlist should mean "nobody", never "everybody". There's no
     # Slack app or ingress wired up yet (see bridge/README.md), so
     # there's genuinely no legitimate caller to allow until that lands -
     # set this deliberately once one exists.
     []
-    {{- else }}
+    {{- end }}
+    {{- if $callers }}
     - from:
         {{- range .Values.networkPolicy.allowedNamespaces }}
         - namespaceSelector:
@@ -33,6 +36,22 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.service.port }}
+    {{- end }}
+    {{- if $scrapers }}
+    # Scrapers reach the metrics port and NOTHING else. Deliberately a separate
+    # rule rather than another namespace on the one above, because that one
+    # opens service.port - where /approvals/:id/approve lives, unauthenticated.
+    # A metrics agent should not be able to release a parked tier-3 action just
+    # because it was allowed to count them.
+    - from:
+        {{- range .Values.metrics.allowedNamespaces }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.metrics.port }}
     {{- end }}
 {{- else }}
 {{- fail "networkPolicy.enabled=false leaves the bridge reachable by any pod in the cluster, and it does not authenticate callers. If your CNI does not enforce NetworkPolicy, remove this guard deliberately and document what replaces it." }}

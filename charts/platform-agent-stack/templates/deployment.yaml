@@ -14,6 +14,16 @@ spec:
         # Roll the pods when any config changes, otherwise a policy edit
         # sits in the ConfigMap while the running bridge uses the old one.
         checksum/config: {{ (.Files.Glob "{swarm,policy,itsm-providers,llm-providers,mcp}/**").AsConfig | sha256sum }}
+        {{- if .Values.metrics.enabled }}
+        # Alloy only scrapes pods that ask to be. The PORT annotation is not
+        # optional here: discovery.kubernetes generates a target per container
+        # port, and this pod has two or three - only one of which serves
+        # /metrics. Without pinning the port, most of every scrape is a 404
+        # billed to Grafana Cloud as failed series.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.metrics.port }}"
+        prometheus.io/path: {{ .Values.metrics.path | quote }}
+        {{- end }}
     spec:
       securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -29,6 +39,13 @@ spec:
             - name: chat
               containerPort: {{ .Values.chat.endpoint.port }}
             {{- end }}
+            {{- if .Values.metrics.enabled }}
+            # Only /metrics is served here. Separate from http so the
+            # NetworkPolicy can allow a scrape without also allowing
+            # POST /approvals/:id/approve, which authenticates nothing.
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+            {{- end }}
           env:
             - name: PORT
               value: "{{ .Values.service.port }}"
@@ -36,6 +53,16 @@ spec:
             - name: PUBLIC_PORT
               value: "{{ .Values.chat.endpoint.port }}"
             {{- end }}
+            - name: METRICS_ENABLED
+              value: "{{ .Values.metrics.enabled }}"
+            {{- if .Values.metrics.enabled }}
+            - name: METRICS_PORT
+              value: "{{ .Values.metrics.port }}"
+            - name: METRICS_PATH
+              value: "{{ .Values.metrics.path }}"
+            {{- end }}
+            - name: BRIDGE_VERSION
+              value: "{{ .Values.image.tag }}"
             # swarm.config.json resolves actionMapping via ${ITSM_PROVIDER}.
             # config.js reads the already-rendered /config/action-mappings.yaml
             # instead, so nothing breaks when this is unset - but the

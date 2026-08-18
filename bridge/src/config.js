@@ -127,5 +127,15 @@ export function loadConfig() {
     // "execute this parked tier-3" endpoint on the internet. Nothing but the
     // adapter's own route is ever registered on this port.
     publicPort: parseInt(process.env.PUBLIC_PORT || "3979", 10),
+    // A THIRD listener, serving only /metrics. Same argument as publicPort: a
+    // scraper has to reach this pod, and `port` carries /approvals/:id/approve
+    // with no authentication in front of it. Opening the main port to the
+    // monitoring namespace would make "release a parked tier-3" reachable by
+    // anything running there. Only /metrics is ever mounted here.
+    metrics: {
+      enabled: (process.env.METRICS_ENABLED || "true").toLowerCase() === "true",
+      port: parseInt(process.env.METRICS_PORT || "9090", 10),
+      path: process.env.METRICS_PATH || "/metrics",
+    },
   };
 }

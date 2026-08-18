@@ -127,6 +127,25 @@ tiered verb nothing implements looks supported and silently isn't.
 **Policy and mappings live in the same repo.** A policy change and the mapping
 change it depends on are one commit and one review.
 
+**Metrics get a third listener.** Same argument as the Teams endpoint, applied
+again: a scraper has to reach the pod, and the main port carries
+`POST /approvals/:id/approve` with no credentials. Allowing the monitoring
+namespace to `:3000` would let anything scheduled there release a parked tier-3
+action. So `/metrics` is on `:9090` with nothing else mounted, and the
+NetworkPolicy has a separate rule that opens only that port. A metrics agent can
+count approvals without being able to grant one.
+
+**The metrics are the policy decisions, not just the HTTP traffic.** A tier-3
+that parked never reaches a backend, so counting backend calls alone would make
+every gated action invisible — precisely the actions an auditor cares about.
+`platform_agent_actions_total` is labelled by verb, tier, action and outcome, so
+"what did this thing do, and what did it refuse to do" is one query.
+
+**Alert-poller health is a timestamp, not a counter.** A poller that stops is
+indistinguishable from a quiet estate if you are watching a counter, because both
+look like "no increase". `alert_last_success_timestamp_seconds` makes staleness a
+positive signal you can alert on.
+
 ---
 
 ## What the end-to-end test proved

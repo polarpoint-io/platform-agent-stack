@@ -18,6 +18,8 @@
 // the useful ones drown. Label the handful of rules that genuinely want an agent
 // looking at them.
 
+import { alertPolls, alertLastSuccess, alertsQueued, alertPollerEnabled } from "./metrics.js";
+
 const SEEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** Stable identity for an alert, so the same firing is not triaged twice. */
@@ -104,22 +106,32 @@ export async function pollOnce({ config, jobs, store, fetchImpl = fetch, now = D
 export function startAlertPoller({ config, jobs, store, fetchImpl = fetch }) {
   if (!config.enabled) {
     console.log("[alerts] disabled - nothing delivers alerts to /triage");
+    alertPollerEnabled.set({}, 0);
     return { stop() {} };
   }
   if (!config.url || !config.token) {
     console.warn("[alerts] enabled but url or token is missing - not polling");
+    alertPollerEnabled.set({}, 0);
     return { stop() {} };
   }
+  alertPollerEnabled.set({}, 1);
 
   let timer = null;
   let stopped = false;
   const run = async () => {
     try {
       const r = await pollOnce({ config, jobs, store, fetchImpl });
+      // A poller that fails silently is indistinguishable from a quiet estate.
+      // The success TIMESTAMP is the one to alert on: polls_total going flat is
+      // only visible as an absence, whereas staleness is a positive signal.
+      alertPolls.inc({ outcome: "success" });
+      alertLastSuccess.set({}, Math.floor(Date.now() / 1000));
       if (r.queued.length) {
+        alertsQueued.inc({}, r.queued.length);
         for (const q of r.queued) console.log(`[alerts] queued ${q.jobId} for ${q.name} (${q.id})`);
       }
     } catch (err) {
+      alertPolls.inc({ outcome: "failure" });
       // Keep polling. Grafana Cloud being briefly unreachable is not a reason to
       // stop noticing alerts for the rest of the process's life.
       console.error(`[alerts] poll failed: ${err.message}`);

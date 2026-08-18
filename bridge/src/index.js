@@ -17,6 +17,16 @@ import { handleInfraRequest } from "./sreAgent.js";
 import { handleItsmRequest } from "./itsmAgent.js";
 import { createChatAdapter } from "./chat/index.js";
 import { startAlertPoller } from "./alerts.js";
+import {
+  collect as collectMetrics,
+  CONTENT_TYPE as METRICS_CONTENT_TYPE,
+  startProcessSampling,
+  triageJobs,
+  triageDuration,
+  chatConnected,
+} from "./metrics.js";
+
+const BRIDGE_VERSION = process.env.BRIDGE_VERSION || "0.8.0";
 
 async function main() {
   const config = loadConfig();
@@ -58,7 +68,23 @@ async function main() {
 
   const worker = startWorker({
     jobs,
-    handle: (job) => runTriage({ text: job.text }),
+    // Timed here rather than inside runTriage so the histogram measures what a
+    // requester actually waits for, including classification.
+    handle: async (job) => {
+      const started = process.hrtime.bigint();
+      let lane = "unknown";
+      try {
+        const result = await runTriage({ text: job.text });
+        lane = result?.lane || "unknown";
+        triageJobs.inc({ lane, status: "done" });
+        return result;
+      } catch (err) {
+        triageJobs.inc({ lane, status: "failed" });
+        throw err;
+      } finally {
+        triageDuration.observe({ lane }, Number(process.hrtime.bigint() - started) / 1e9);
+      }
+    },
     onResult: async (job) => {
       // Where a completed job gets delivered back to whoever asked. Slack
       // Socket Mode plugs in here; until then a job's result is read from
@@ -208,6 +234,9 @@ async function main() {
       await chat.start();
     }
     console.log(`[chat] ${chat.name} front door active`);
+    chatConnected.set({ provider: config.chat.provider }, 1);
+  } else {
+    chatConnected.set({ provider: config.chat.provider || "none" }, 0);
   }
 
   // Nothing else notices anything on its own - every other request is a human
@@ -217,6 +246,36 @@ async function main() {
     jobs,
     store: state.alerts,
   });
+
+  const sampler = startProcessSampling();
+
+  // Metrics get their own listener, and nothing else is ever mounted on it.
+  //
+  // A scraper has to reach this pod from the monitoring namespace. The main port
+  // carries /approvals/:id/approve, which takes no credentials at all - so
+  // opening THAT port to wherever Prometheus or Alloy runs would make "release a
+  // parked tier-3 action" reachable by anything scheduled there. Splitting the
+  // listener is what lets the NetworkPolicy allow a scrape without allowing an
+  // approval.
+  let metricsServer = null;
+  if (config.metrics.enabled) {
+    const metricsApp = express();
+    // Never 500s. A failed scrape is a monitoring problem; a scrape that can
+    // crash the handler is an availability problem, and this exists to measure
+    // availability.
+    metricsApp.get(config.metrics.path, async (_req, res) => {
+      try {
+        const body = await collectMetrics({ backends, executor, jobs, state, version: BRIDGE_VERSION });
+        res.set("Content-Type", METRICS_CONTENT_TYPE).send(body);
+      } catch (err) {
+        console.error(`[metrics] collect failed: ${err.message}`);
+        res.set("Content-Type", METRICS_CONTENT_TYPE).send("# collect failed\n");
+      }
+    });
+    metricsServer = metricsApp.listen(config.metrics.port, "0.0.0.0", () => {
+      console.log(`[metrics] ${config.metrics.path} on 0.0.0.0:${config.metrics.port} - scrape ONLY this port`);
+    });
+  }
 
   const server = app.listen(config.port, "0.0.0.0", () => {
     console.log(`platform-agent-bridge listening on 0.0.0.0:${config.port}`);
@@ -230,9 +289,11 @@ async function main() {
       console.log(`[shutdown] ${signal} - draining`);
       worker.stop();
       alertPoller.stop();
+      sampler.stop();
       await chat?.stop?.().catch(() => {});
       server.close();
       publicServer?.close();
+      metricsServer?.close();
       await state.close();
       process.exit(0);
     });

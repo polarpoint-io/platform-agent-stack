@@ -62,6 +62,51 @@ directory within it.
 
 ![Container view](images/external/c4-container.png)
 
+### Level 3 — components inside the bridge
+
+Organised around the three listeners, because the listener split *is* the
+security boundary. Everything on `:3000` is unauthenticated, so anything that
+has to be reachable from somewhere else gets its own port and its own
+NetworkPolicy rule — Teams on `:3979`, metrics on `:9090`.
+
+![Component view](images/external/c4-component-bridge.png)
+
+### Dynamic — one tier-3 action
+
+Traced from a real run: `create_ticket` parked instead of executing, and the
+release then failed against a suspended ITSM account *without consuming the
+approval*.
+
+![Gated action](images/external/c4-dynamic-gated-action.png)
+
+## Metrics
+
+Prometheus exposition on `:9090/metrics`, on its own listener with nothing else
+mounted on it. Same argument as the Teams endpoint: a scraper has to reach this
+pod, and the main port carries `POST /approvals/:id/approve` with no
+credentials in front of it — so opening `:3000` to the monitoring namespace
+would let anything running there release a parked tier-3 action.
+
+Alloy scrapes pods that ask to be. `prometheus.io/port` is not optional here:
+`discovery.kubernetes` makes a target per container port, and only one of this
+pod's ports serves `/metrics`.
+
+The series worth alerting on:
+
+| Metric | Why |
+|--------|-----|
+| `platform_agent_backend_ready{backend}` | A backend that dropped out makes its verbs silently unavailable |
+| `platform_agent_alert_last_success_timestamp_seconds` | Staleness is a positive signal; `polls_total` going flat is only an absence |
+| `platform_agent_state_durable` | 0 means parked approvals and queued jobs no longer survive a restart |
+| `platform_agent_approvals_pending` | Climbing means humans have stopped answering |
+| `platform_agent_actions_total{verb,tier,action,outcome}` | The audit series — what was executed, parked, drafted or refused |
+| `platform_agent_triage_duration_seconds{lane}` | The infra lane runs 30–60s; a change here is the first sign of trouble |
+| `platform_agent_event_loop_lag_seconds` | The worker is serial, so a wedged job shows as lag before it shows as failure |
+
+Every label is bounded — verbs come from `risk-tiers.yaml`, backends from
+`.mcp.json`, lanes are a closed set. Nothing is labelled with a job or ticket
+id, which is how a metrics endpoint turns into an unbounded cardinality bill.
+
 ## Deploying
 
 ArgoCD owns this. The Application is declared in `argocd-core`'s environment

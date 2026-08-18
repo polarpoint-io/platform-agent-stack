@@ -1,0 +1,90 @@
+@startuml c4-component-bridge
+' C4 level 3 — components inside platform-agent-bridge.
+' Organised around the THREE listeners, because the listener split IS the
+' security boundary: everything on :3000 is unauthenticated, so anything that
+' has to be reachable from somewhere else gets its own port and its own rule.
+!include <C4/C4_Component>
+
+title Component view — platform-agent-bridge, and why it has three listeners
+
+AddElementTag("private", $bgColor="#1f4e5f", $fontColor="#ffffff", $borderColor="#2e6f85", $legendText="private listener :3000 — no authentication, NetworkPolicy is the only control")
+AddElementTag("public", $bgColor="#7a4f01", $fontColor="#ffffff", $borderColor="#a86a02", $legendText="public listener :3979 — one route only, JWT-validated by the Bot Framework")
+AddElementTag("metrics", $bgColor="#3b5c2b", $fontColor="#ffffff", $borderColor="#547f3e", $legendText="metrics listener :9090 — one route only, read-only")
+AddElementTag("notEnabled", $bgColor="#4a4a4a", $fontColor="#cfcfcf", $borderColor="#8a8a8a", $legendText="deliberately not enabled")
+
+AddRelTag("gated", $textColor="#c1121f", $lineColor="#c1121f", $lineStyle=DashedLine())
+AddRelTag("readonly", $lineStyle=DashedLine())
+AddRelTag("denied", $textColor="#c1121f", $lineColor="#c1121f", $lineStyle=DottedLine())
+AddRelTag("outbound", $textColor="#2a9d8f", $lineColor="#2a9d8f")
+
+Person(engineer, "Engineer / on-call", "Reports incidents, approves tier 3")
+
+System_Ext(slack, "Slack", "Socket Mode — the bridge dials OUT, so no ingress exists")
+System_Ext(teams, "Teams / Bot Framework", "POSTs inbound; cannot dial out", $tags="notEnabled")
+System_Ext(grafanacloud, "Grafana Cloud", "Alertmanager API + remote_write")
+System_Ext(alloy, "Grafana Alloy", "namespace: grafana-alloy — scrapes annotated pods")
+System_Ext(holmes, "HolmesGPT", "Read-only cluster investigation")
+System_Ext(itsmext, "Freshservice", "ITSM backend, via MCP")
+System_Ext(runbooks, "holmesgpt-runbook-mcp", "search / RCA / draft PR")
+ContainerDb_Ext(mongo, "MongoDB", "Durable jobs and parked approvals")
+
+Container_Boundary(bridge, "platform-agent-bridge (single pod, one replica)") {
+
+    Component(privateApi, "Private API", "Express :3000", "/triage, /triage/:id, /actions/:verb, /approvals, /approvals/:id/approve, /status, /health", $tags="private")
+    Component(publicApi, "Chat endpoint", "Express :3979", "/api/messages ONLY. Exists so Teams can be exposed without exposing /approvals", $tags="public")
+    Component(metricsApi, "Metrics endpoint", "Express :9090", "/metrics ONLY. Separate so a scraper can be allowed in without being able to approve", $tags="metrics")
+
+    Component(chatAdapter, "chat adapter", "chat/slack.js | chat/teams.js", "Platform is a deployment choice; agents and policy never learn which")
+    Component(alertPoller, "alert poller", "alerts.js", "Polls Grafana every 60s. Opt-in via agent=triage. Dedupes on fingerprint")
+
+    Component(queue, "triage queue + worker", "jobs.js", "Accepts in 202, runs serially. Requeues jobs abandoned mid-flight")
+    Component(router, "triage-router", "llm.js classify()", "infra_incident | itsm_ticket | unknown")
+
+    Component(sre, "sre-investigator", "sreAgent.js", "Relays to HolmesGPT")
+    Component(itsmAgent, "itsm-support", "itsmAgent.js", "Maps language to verbs")
+
+    Component(executor, "executor", "executor.js", "THE choke point — every tool call for every backend passes through policy.decide() first", $tags="gated")
+    ComponentDb(policy, "risk-tiers.yaml", "policy/", "4 tiers. Unlisted verbs fail closed to tier_4_draft_only")
+    Component(backends, "backend registry", "mcpBackends.js", "MCP clients; assertVerbsResolve() checks tiered verbs exist at boot")
+    ComponentDb(state, "state store", "stateStore.js", "Mongo-backed; falls back to memory and says so via durableState")
+    ComponentDb(metrics, "metrics registry", "metrics.js", "Zero-dependency counters/gauges/histograms. Bounded labels only")
+}
+
+' --- inbound ---------------------------------------------------------------
+Rel(engineer, slack, "Asks / approves")
+Rel_R(slack, chatAdapter, "Socket Mode WebSocket", "outbound-dialled", $tags="outbound")
+Rel(teams, publicApi, "POST /api/messages", "HTTPS + JWT")
+Rel(publicApi, chatAdapter, "Hands off")
+Rel(chatAdapter, privateApi, "POST /triage")
+
+Rel(alertPoller, grafanacloud, "GET active alerts every 60s", "outbound-dialled — nothing reaches in", $tags="outbound")
+Rel(alertPoller, queue, "Enqueues opted-in alerts")
+
+' --- the pipeline ----------------------------------------------------------
+Rel(privateApi, queue, "202 + job id")
+Rel(queue, router, "Claims one job at a time")
+Rel(router, sre, "infra_incident")
+Rel(router, itsmAgent, "itsm_ticket")
+Rel(sre, holmes, "Investigates", "read-only", $tags="readonly")
+Rel(sre, executor, "runbook verbs")
+Rel(itsmAgent, executor, "Every write", $tags="gated")
+Rel(executor, policy, "decide(verb)", $tags="gated")
+Rel(executor, backends, "callTool() — only tier 1/2 reach here")
+Rel(backends, itsmext, "MCP")
+Rel(backends, runbooks, "MCP")
+Rel(executor, state, "Parks tier 3 durably")
+Rel(queue, state, "Jobs")
+Rel(state, mongo, "Reads / writes")
+Rel(engineer, privateApi, "POST /approvals/:id/approve to release a tier 3", $tags="gated")
+
+' --- observability ---------------------------------------------------------
+Rel(executor, metrics, "Records decision by verb/tier/outcome")
+Rel(queue, metrics, "Records lane + duration")
+Rel(alertPoller, metrics, "Records poll outcome + last success")
+Rel(metricsApi, metrics, "Renders on scrape; refreshes live gauges first")
+Rel_U(alloy, metricsApi, "Scrapes :9090/metrics", "allowed by NetworkPolicy")
+Rel(alloy, privateApi, "DENIED — a metrics agent must not be able to approve", $tags="denied")
+Rel(alloy, grafanacloud, "remote_write")
+
+SHOW_LEGEND()
+@enduml

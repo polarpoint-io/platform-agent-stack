@@ -1,0 +1,47 @@
+@startuml c4-dynamic-gated-action
+' C4 dynamic view — one tier-3 request, end to end.
+' Traced from the real run on 2026-08-18: create_ticket parked rather than
+' executed, and the release then failed against a suspended ITSM account
+' WITHOUT consuming the approval.
+!include <C4/C4_Dynamic>
+
+title Dynamic view — a tier-3 action, from chat message to parked approval
+
+AddRelTag("gated", $textColor="#c1121f", $lineColor="#c1121f", $lineStyle=DashedLine())
+AddRelTag("never", $textColor="#c1121f", $lineColor="#c1121f", $lineStyle=DottedLine())
+AddRelTag("metric", $textColor="#2a9d8f", $lineColor="#2a9d8f", $lineStyle=DottedLine())
+
+Person(engineer, "Engineer", "Asks in Slack")
+Container(chat, "chat adapter", "chat/slack.js")
+Container(api, "Private API", "Express :3000")
+Container(queue, "queue + worker", "jobs.js")
+Container(router, "triage-router", "llm.js")
+Container(agent, "itsm-support", "itsmAgent.js")
+Container(executor, "executor", "executor.js")
+ContainerDb(policy, "risk-tiers.yaml", "policy/")
+ContainerDb(state, "state store", "Mongo-backed")
+ContainerDb(metrics, "metrics registry", "metrics.js")
+System_Ext(itsmext, "Freshservice", "ITSM backend")
+
+Rel(engineer, chat, "1. 'Raise a ticket: VPN drops every 10 min'")
+Rel(chat, api, "2. POST /triage")
+Rel(api, queue, "3. 202 + job id — Slack needs an ack inside 3s")
+Rel(chat, engineer, "4. Acknowledges immediately")
+Rel(queue, router, "5. Worker claims the job")
+Rel(router, agent, "6. Classified itsm_ticket")
+Rel(agent, executor, "7. execute('create_ticket', args)")
+Rel(executor, policy, "8. decide('create_ticket')")
+Rel(policy, executor, "9. tier_3_approval -> park", $tags="gated")
+Rel(executor, state, "10. Park durably; survives a restart")
+Rel(executor, metrics, "11. actions_total{action=park,outcome=parked}++", $tags="metric")
+Rel(executor, itsmext, "NEVER reached on tier 3 — no call is made until a human releases it", $tags="never")
+Rel(executor, chat, "12. 'waiting for approval' + approval id")
+Rel(engineer, api, "13. POST /approvals/:id/approve", $tags="gated")
+Rel(api, executor, "14. approve(id)")
+Rel(executor, itsmext, "15. NOW the call is made")
+Rel(itsmext, executor, "16. 403 account_suspended")
+Rel(executor, state, "17. Approval STAYS pending — a rejected call must not consume a human decision", $tags="gated")
+Rel(executor, metrics, "18. approval_decisions_total{outcome=backend_rejected}++", $tags="metric")
+
+SHOW_LEGEND()
+@enduml
