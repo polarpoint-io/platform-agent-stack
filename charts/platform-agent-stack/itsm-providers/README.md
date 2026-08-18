@@ -30,10 +30,20 @@ The chart reads both, selected by `itsmProvider` in `values.yaml`.
   create a service account with an API key. Then seed
   `platform-agent-stack-atlassian` and set `jira.projectKey`.
 
-  The mapped tool names were cross-checked against Atlassian's published
-  tool list and match exactly — but read the lesson at the bottom of this
-  file before trusting that. Note API-key auth exposes a **smaller** tool
-  set than OAuth, because some product scopes are unavailable to API keys.
+  **The tool list you get is a function of the API key's scopes**, and
+  this is the failure to expect. Probed live on 2026-08-18: the first
+  service-account key authenticated correctly — `initialize` returned 200
+  with a session id — and then `tools/list` returned exactly **three**
+  tools, all Teamwork Graph (`getTeamworkGraphContext`,
+  `getTeamworkGraphObject`, `addTeamworkGraphContext`). Every mapped verb
+  was absent. Nothing was wrong with the mapping; the key had no Jira or
+  Confluence scopes.
+
+  Scopes are fixed when a key is created and **cannot be added
+  afterwards** — a key missing them must be regenerated. The service
+  account also needs product access to JSM (and Confluence for the KB
+  verbs); no scope can cover a product the account cannot see. Diagnose by
+  counting `tools/list`: a short list means scopes, not code.
 
 - **Freshservice is implemented and proven**, though the account is
   currently suspended. ServiceNow
