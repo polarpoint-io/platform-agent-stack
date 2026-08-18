@@ -10,8 +10,22 @@ llmProvider: anthropic
 image:
   # Built and pushed by .github/workflows/build-bridge-image.yml from bridge/.
   repository: ghcr.io/polarpoint-io/platform-agent-bridge
-  tag: "0.9.0"
+  tag: "0.10.0"
   pullPolicy: IfNotPresent
+
+# Jira Service Management, used only when itsmProvider is
+# jira-service-management. Both are DEPLOYMENT facts, injected into every tool
+# call by the bridge rather than left to the model - Atlassian API-key auth is
+# not bound to a site, so every call carries a cloudId, and a cloudId the model
+# could choose is one prompt injection could redirect.
+#
+# The chart FAILS TO RENDER if either is empty while that provider is selected,
+# rather than deploying something whose every call 400s.
+jira:
+  # curl -s https://<your-site>.atlassian.net/_edge/tenant_info
+  cloudId: "14b1a00e-e800-4e06-8837-63cc0264ac84"   # polarpoint.atlassian.net
+  # The service desk project new tickets are raised in, e.g. SD.
+  projectKey: ""
 
 # Per-tool-call timeout for MCP requests. The SDK default of 60s is too
 # short for tools that call an LLM and then a git forge.
@@ -208,6 +222,17 @@ externalSecrets:
     alerts-webhook:
       remoteKey: platform-agent-stack-alerts-webhook
       properties: [ALERTS_WEBHOOK_TOKEN]
+      optional: true
+    # REQUIRED when itsmProvider is jira-service-management (the chart fails to
+    # render without it). A SERVICE ACCOUNT API key, not a personal token: a
+    # personal one attributes every ticket the agent raises to that human and
+    # carries their whole permission set. An org admin must first enable API-key
+    # auth for the Rovo MCP Server under Security -> Atlassian Rovo MCP Server.
+    # Harmless while Freshservice is selected - optional means an unseeded key
+    # degrades rather than blocking pod start.
+    atlassian:
+      remoteKey: platform-agent-stack-atlassian
+      properties: [ATLASSIAN_API_KEY]
       optional: true
 
 resources:

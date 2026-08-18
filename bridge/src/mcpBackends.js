@@ -48,6 +48,9 @@ export class Backend {
     this.client = null;
     this.ready = false;
     this.tools = [];
+    // Deployment facts merged into every call to this backend - see
+    // BackendRegistry.applyInjected.
+    this.injectArgs = null;
     // How to rebuild this connection from scratch. Set by connect*(), used by
     // reconnect() - without it a dropped backend stays dropped until the pod
     // is restarted by hand.
@@ -71,8 +74,18 @@ export class Backend {
     await this._connect(this._open());
   }
 
-  async connectHttp(url) {
-    this._open = () => new StreamableHTTPClientTransport(new URL(url));
+  /**
+   * @param headers static request headers, e.g. an Authorization for a hosted
+   *        server that authenticates by API key rather than OAuth.
+   *
+   * Atlassian's Rovo MCP Server is the reason this takes headers at all. Its
+   * OAuth 2.1 flow is an interactive browser consent, which a pod cannot
+   * complete; a service-account API key sent as `Authorization: Bearer <key>`
+   * is the supported non-interactive path.
+   */
+  async connectHttp(url, headers = {}) {
+    const init = Object.keys(headers).length ? { requestInit: { headers } } : undefined;
+    this._open = () => new StreamableHTTPClientTransport(new URL(url), init);
     await this._connect(this._open());
   }
 
@@ -137,9 +150,21 @@ export class BackendRegistry {
     for (const [name, def] of Object.entries(mcpServers)) {
       const backendName = name === "itsm" ? "itsm" : name;
       const backend = new Backend(backendName);
+      // Deployment facts the model must never choose - see injectArgs below.
+      backend.injectArgs = def.injectArgs || null;
       this.backends.set(backendName, backend);
       try {
-        await backend.connectStdio(def.command, def.args, def.env);
+        // A provider is EITHER a local process or a hosted URL. Until now this
+        // only ever called connectStdio, so a url-based provider silently
+        // became connectStdio(undefined) - which is how the committed Jira
+        // provider could look configured and never have worked.
+        if (def.url) {
+          await backend.connectHttp(def.url, def.headers || {});
+        } else if (def.command) {
+          await backend.connectStdio(def.command, def.args, def.env);
+        } else {
+          throw new Error("provider defines neither `command` (local process) nor `url` (hosted server)");
+        }
       } catch (err) {
         console.error(`[${backendName}] failed to connect: ${err.message} (tools from this backend will report "not available")`);
       }
@@ -156,11 +181,44 @@ export class BackendRegistry {
     }
   }
 
+  /**
+   * Deployment facts the model must not choose, merged into every call.
+   *
+   * Atlassian's API-key auth is NOT bound to a cloudId - Atlassian's own docs
+   * say clients "must explicitly pass the cloudId where needed" - so every tool
+   * takes it as a required argument. The model has no way to know it, and more
+   * to the point it must not: a cloudId supplied by the model is a cloudId that
+   * prompt injection can redirect, and writing a ticket into someone else's
+   * Atlassian site is a bad failure. Same for projectKey, which is a deployment
+   * decision, not a per-request one.
+   *
+   * So these OVERRIDE whatever the model produced rather than filling gaps.
+   * A value the model must not choose is not a default.
+   */
+  static applyInjected(injectArgs, args, warn = console.warn) {
+    if (!injectArgs) return args;
+    const out = { ...(args || {}) };
+    for (const [k, v] of Object.entries(injectArgs)) {
+      // config.js leaves an unset ${VAR} in place and warns. Injecting that
+      // literal would send Atlassian the eight characters "${ATLASSIAN_CLOUD_ID}"
+      // as a cloudId - a confusing 400 at best, and at worst a value that reads
+      // as present. Drop it and say so: an unset deployment fact should look
+      // like a missing argument, which is a clear error, not like a supplied one.
+      if (typeof v === "string" && /\$\{[A-Z0-9_]+\}/.test(v)) {
+        warn(`[mcp] not injecting "${k}": its value is still an unresolved placeholder (${v})`);
+        continue;
+      }
+      out[k] = v;
+    }
+    return out;
+  }
+
   async callTool(backendName, toolName, args) {
     const backend = this.backends.get(backendName);
     if (!backend) {
       throw new Error(`backend "${backendName}" is not connected`);
     }
+    args = BackendRegistry.applyInjected(backend.injectArgs, args);
     // Deliberately NOT short-circuiting on !backend.ready. Backend.callTool
     // tries a reconnect first, so a backend that was down at boot or has since
     // been restarted can recover on the next call instead of staying dead for

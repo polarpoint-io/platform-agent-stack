@@ -14,7 +14,29 @@ The chart reads both, selected by `itsmProvider` in `values.yaml`.
 
 ## Open items — resolve before this is used in anger
 
-- **Jira Service Management and Freshservice are implemented.** ServiceNow
+- **Jira Service Management is wired but NOT yet run against a live
+  server.** Corrected 2026-08-18 against Atlassian's current docs, having
+  been unusable as originally committed: it named `https://mcp.atlassian.com/v1/sse`
+  with `"transport": "sse"`, and (a) that endpoint stopped being supported
+  on 2026-06-30, (b) the bridge has no SSE transport, and (c)
+  `connectAll()` only ever called `connectStdio`, so a `url` provider was
+  never dispatched at all. It now uses `/v1/mcp` over Streamable HTTP with
+  a service-account API key as a Bearer token, which is Atlassian's
+  documented non-interactive path — their OAuth 2.1 flow is a browser
+  consent a pod cannot complete.
+
+  Before it can work, an **org admin** must enable API-token auth for the
+  Rovo MCP Server (Security → Atlassian Rovo MCP Server settings) and
+  create a service account with an API key. Then seed
+  `platform-agent-stack-atlassian` and set `jira.projectKey`.
+
+  The mapped tool names were cross-checked against Atlassian's published
+  tool list and match exactly — but read the lesson at the bottom of this
+  file before trusting that. Note API-key auth exposes a **smaller** tool
+  set than OAuth, because some product scopes are unavailable to API keys.
+
+- **Freshservice is implemented and proven**, though the account is
+  currently suspended. ServiceNow
   is not yet. Freshservice uses the self-hosted community server
   (github.com/effytech/freshservice_mcp) rather than Freshworks' own
   hosted MCP integration, which is Beta/EAP-gated to selected

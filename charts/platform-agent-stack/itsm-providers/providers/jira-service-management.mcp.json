@@ -1,8 +1,18 @@
 {
   "itsm": {
-    "url": "https://mcp.atlassian.com/v1/sse",
-    "transport": "sse",
-    "_note": "Atlassian's hosted Remote MCP Server. It authenticates per-user over OAuth rather than taking an API token in the environment, so there is no env block here — the bridge completes the OAuth flow on first connect.",
-    "_todo_verify": "Confirm the endpoint and transport against Atlassian's current docs. If you self-host mcp-atlassian instead, this becomes a command/args block with JIRA_URL, JIRA_USERNAME and JIRA_API_TOKEN in env."
+    "url": "https://mcp.atlassian.com/v1/mcp",
+    "headers": {
+      "Authorization": "Bearer ${ATLASSIAN_API_KEY}"
+    },
+    "injectArgs": {
+      "cloudId": "${ATLASSIAN_CLOUD_ID}",
+      "projectKey": "${JSM_PROJECT_KEY}"
+    },
+    "_endpoint": "Atlassian's hosted Rovo MCP Server, Streamable HTTP. NOT /v1/sse - that endpoint stopped being supported on 2026-06-30 (support.atlassian.com/atlassian-rovo-mcp-server/docs/configuring-authentication-via-api-token/). This file previously named /v1/sse with \"transport\": \"sse\", which was wrong twice over: the endpoint is retired AND the bridge has no SSE transport, only stdio and Streamable HTTP. Verified against Atlassian's docs 2026-08-18.",
+    "_auth": "Service-account API key as a Bearer token. Atlassian's OAuth 2.1 flow is an interactive browser consent, which a pod cannot complete - API-key auth is the documented non-interactive path for 'backend services, CI/CD pipelines, bots, and automated agents'. It must be ENABLED BY AN ORG ADMIN under Security -> Atlassian Rovo MCP Server settings, and the key is created against a service account, not a person. A personal token would work as \"Basic base64(email:token)\" instead, but attributes every ticket the agent raises to that human and carries their whole permission set.",
+    "_cloudid": "API-key auth is NOT bound to a cloudId - Atlassian's docs are explicit that clients 'must explicitly pass the cloudId where needed' - so every tool takes it as a REQUIRED argument. The model cannot know it and must not choose it: a model-supplied cloudId is one that prompt injection can redirect, and a ticket written into another Atlassian site is a bad failure. It is injected by the bridge instead (injectArgs, mcpBackends.js), which OVERRIDES whatever the model produced. Discover yours with: curl -s https://<site>.atlassian.net/_edge/tenant_info",
+    "_projectkey": "createJiraIssue also requires projectKey and issueTypeName. projectKey is a deployment decision, not a per-request one, so it is injected the same way. issueTypeName is NOT injected - 'Bug' vs 'Task' vs a JSM request type is a genuine per-ticket judgement, and it is carried as an argument_hint in the action mapping instead.",
+    "_todo_verify": "NOT YET RUN AGAINST A LIVE SERVER. The tool names in ../action-mappings/jira-service-management.yaml were cross-checked against Atlassian's published tool list on 2026-08-18 and match exactly, but a name existing is not proof a verb works - that lesson cost three broken verbs on the Freshservice side. Before trusting this: connect, read tools/list, and call every mapped verb. Note also that API-key auth exposes a SMALLER tool set than OAuth, because some product scopes are unavailable to API keys - so a tool present under OAuth may be absent here.",
+    "_write_surface": "The Rovo server exposes editJiraIssue and transitionJiraIssue, both general-purpose. Neither is mapped, deliberately - see the action mapping for why. An unmapped tool cannot execute regardless of tier."
   }
 }

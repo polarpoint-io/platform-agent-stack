@@ -68,6 +68,15 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            {{- if eq .Values.itsmProvider "jira-service-management" }}
+            # Substituted into itsm-providers/providers/jira-service-management.mcp.json
+            # by config.js. ATLASSIAN_API_KEY arrives via envFrom from the
+            # `atlassian` ExternalSecret; these two are not secret.
+            - name: ATLASSIAN_CLOUD_ID
+              value: "{{ .Values.jira.cloudId }}"
+            - name: JSM_PROJECT_KEY
+              value: "{{ .Values.jira.projectKey }}"
+            {{- end }}
             - name: METRICS_ENABLED
               value: "{{ .Values.metrics.enabled }}"
             {{- if .Values.metrics.enabled }}

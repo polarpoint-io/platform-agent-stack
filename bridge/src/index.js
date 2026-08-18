@@ -28,7 +28,7 @@ import {
   chatConnected,
 } from "./metrics.js";
 
-const BRIDGE_VERSION = process.env.BRIDGE_VERSION || "0.9.0";
+const BRIDGE_VERSION = process.env.BRIDGE_VERSION || "0.10.0";
 
 async function main() {
   const config = loadConfig();

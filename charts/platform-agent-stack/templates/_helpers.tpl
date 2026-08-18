@@ -47,6 +47,34 @@ the action would reach the backend ungated — silently. Fail at render.
 {{- end -}}
 
 {{/*
+Jira Service Management needs two deployment facts that Atlassian's API-key
+auth does NOT supply for you.
+
+Atlassian's docs are explicit that API-key tokens are "not bound to a specific
+cloudId" and clients "must explicitly pass the cloudId where needed", so every
+tool call carries it. The bridge injects it rather than letting the model guess
+— but an empty value would inject nothing and every call would fail deep in a
+pod log with an opaque Atlassian error. Fail at render instead, where the
+message can say what to do.
+
+Discover the cloudId with:
+  curl -s https://<your-site>.atlassian.net/_edge/tenant_info
+*/}}
+{{- define "platform-agent-stack.assertJira" -}}
+{{- if eq .Values.itsmProvider "jira-service-management" -}}
+{{- if not .Values.jira.cloudId -}}
+{{- fail "itsmProvider=jira-service-management requires jira.cloudId. Atlassian API-key auth is not bound to a site, so every tool call must carry a cloudId. Find yours with: curl -s https://<your-site>.atlassian.net/_edge/tenant_info" -}}
+{{- end -}}
+{{- if not .Values.jira.projectKey -}}
+{{- fail "itsmProvider=jira-service-management requires jira.projectKey - the service desk project new tickets are raised in (e.g. SD). createJiraIssue cannot be called without it." -}}
+{{- end -}}
+{{- if not (hasKey .Values.externalSecrets.keys "atlassian") -}}
+{{- fail "itsmProvider=jira-service-management requires an externalSecrets.keys.atlassian entry supplying ATLASSIAN_API_KEY. Without it the bridge sends `Authorization: Bearer ${ATLASSIAN_API_KEY}` literally and every call is a 401." -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Same idea as assertProvider, for the LLM backend file. A missing file
 here is a straight render failure, not a silent gate bypass — but it
 should still fail loudly at render rather than 404 deep in a pod's logs.
