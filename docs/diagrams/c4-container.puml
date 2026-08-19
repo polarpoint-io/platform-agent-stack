@@ -4,7 +4,7 @@
 ' are directories within it.
 !include <C4/C4_Container>
 
-title Container view — three repos
+title Container view — two repos
 
 AddElementTag("notEnabled", $bgColor="#4a4a4a", $fontColor="#cfcfcf", $borderColor="#8a8a8a", $legendText="deliberately not enabled")
 AddRelTag("gated", $textColor="#c1121f", $lineColor="#c1121f", $lineStyle=DashedLine())
@@ -12,55 +12,56 @@ AddRelTag("readonly", $lineStyle=DashedLine())
 
 Person(engineer, "Engineer / on-call")
 
-System_Boundary(bridge, "repo: ruflo-bridge") {
-    Container(runtime, "Ruflo MCP bridge", "Helm chart, ArgoCD-synced", "Pinned >= 3.16.3 (CVE-2026-59726). NetworkPolicy-scoped.")
-    Container(triage, "triage-router", "Ruflo agent", "Classifies each request and routes it")
-}
-
 System_Boundary(pas, "repo: platform-agent-stack") {
-    Container(sre, "sre-investigator", "swarm/ — wraps HolmesGPT", "Read-only investigation")
-    Container(itsmagent, "itsm-support", "swarm/", "Ticket and knowledge work")
+    Container(runtime, "MCP bridge", "bridge/ — Express + MCP SDK, Helm chart, ArgoCD-synced", "One Deployment, 2 replicas. Deny-all NetworkPolicy. Holds every credential.")
+    Container(triage, "triage-router", "in-process", "One LLM call. Classifies infra vs ITSM; an explicit ask for a ticket beats the topic.")
+    Container(sre, "sre-investigator", "in-process — relays to HolmesGPT", "Read-only investigation")
+    Container(itsmagent, "itsm-support", "in-process", "Maps language to policy verbs")
+    Container(executor, "executor", "the single choke point", "Every tool call for every backend goes through policy.decide() first")
     ContainerDb(policy, "risk-tiers.yaml", "policy/", "4 tiers. Unlisted verbs fail closed to tier 4.")
     ContainerDb(mappings, "action-mappings/", "itsm-providers/", "Generic verbs to a backend's real tool names")
-    Container(provider, "providers/", "itsm-providers/", "MCP server definition per backend")
+    Container(provider, "providers/", "itsm-providers/", "MCP server definition per backend — local process or hosted URL")
     Container(cm, "ConfigMaps", "rendered by Helm", "swarm config, policy, mappings, merged .mcp.json")
-    Container(confl, "confluence-toolset/", "REST client", "Read path only, by design")
-    Container(llmcfg, "llm-providers/", "config", "Foundry now, Modelplane later")
+    Container(llmcfg, "llm-providers/", "config", "anthropic selected; foundry and modelplane alongside")
+    Container(metrics, "metrics", "own listener :9090", "Prometheus. Separate port so a scraper cannot reach /approvals.")
 }
 
 System_Boundary(state, "repo: mongostate-crossplane") {
-    ContainerDb(mongo, "Mongo-compatible state", "Crossplane XRD + Compositions", "One API across azure, aws, gcp, baremetal")
+    ContainerDb(mongo, "Mongo-compatible state", "Crossplane XRD + Compositions", "Triage queue, parked approvals, and the decision audit log. One API across azure, aws, gcp, baremetal.")
 }
 
-System_Ext(obs, "Observability", "K8s, Prometheus, Thanos, Grafana, Azure MCP")
-System_Ext(itsmext, "ITSM backend", "Jira Service Management via Atlassian MCP")
-System_Ext(conflext, "Confluence", "REST")
-System_Ext(runbooks, "holmesgpt-runbook-mcp", "search / RCA / draft PR")
-System_Ext(foundry, "Azure AI Foundry", "LLM inference")
-System_Ext(argocd, "ArgoCD", "Syncs all three repos from git")
+System_Ext(obs, "Observability", "K8s, Prometheus, Thanos, Grafana; Azure/AWS/GCP MCP the same way")
+System_Ext(itsmext, "ITSM backend", "Jira Service Management via Atlassian Rovo MCP")
+System_Ext(runbooks, "holmesgpt-runbook-mcp", "Confluence-backed runbooks / RCA / draft PR")
+System_Ext(anthropic, "Anthropic", "LLM inference")
+System_Ext(grafana, "Grafana Cloud", "Alerts — polled outbound, or an authenticated webhook")
+System_Ext(argocd, "ArgoCD", "Syncs both repos from git")
 System_Ext(eso, "External Secrets Operator", "Pulls API credentials into the cluster")
+System_Ext(alloy, "Grafana Alloy", "Scrapes :9090 only")
 System_Ext(remediation, "Kubernetes Remediation MCP", "restart / scale / drain", $tags="notEnabled")
 
-Rel(engineer, triage, "Slack / alert / ticket")
+Rel(engineer, triage, "Slack (Socket Mode, dials out)")
+Rel(grafana, triage, "Alerts — one replica polls, leader-elected")
 Rel(runtime, triage, "Hosts")
 Rel(triage, sre, "infra incident")
-Rel(triage, itsmagent, "ITSM ticket / knowledge")
-Rel(triage, mongo, "Swarm state")
+Rel(triage, itsmagent, "ITSM ticket")
+Rel(runtime, mongo, "Queue, approvals, decisions")
 
 Rel(sre, obs, "Investigates", "read-only", $tags="readonly")
 Rel(sre, runbooks, "Searches; runbook_draft opens a PR")
-Rel(runbooks, policy, "runbook_draft gated at tier 2", $tags="gated")
 Rel_D(sre, remediation, "Would need tier 3/4", "not wired in")
 
-Rel(itsmagent, provider, "Invokes tools via")
-Rel(itsmagent, confl, "Looks up")
+Rel(sre, executor, "every tool call", $tags="gated")
+Rel(itsmagent, executor, "every tool call", $tags="gated")
+Rel(executor, policy, "decide(verb)", $tags="gated")
+Rel(executor, provider, "Invokes only tier 1 and 2")
+Rel(engineer, executor, "Approves or rejects tier 3", $tags="gated")
 Rel(provider, itsmext, "MCP")
-Rel(confl, conflext, "read-only", $tags="readonly")
-Rel(itsmagent, policy, "Every write gated by", $tags="gated")
 Rel(policy, mappings, "Verbs resolved against these")
 Rel(mappings, provider, "Resolves verbs to tool names")
 
-Rel(llmcfg, foundry, "Routes agent reasoning to")
+Rel(llmcfg, anthropic, "Routes classification and reasoning to")
+Rel(alloy, metrics, "Scrapes")
 Rel(argocd, runtime, "Syncs")
 Rel(argocd, cm, "Syncs")
 Rel(argocd, mongo, "Syncs XRD + Compositions")

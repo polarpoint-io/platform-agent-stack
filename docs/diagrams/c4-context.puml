@@ -6,24 +6,22 @@ title System context — SRE + ITSM agent platform
 
 AddElementTag("notEnabled", $bgColor="#4a4a4a", $fontColor="#cfcfcf", $borderColor="#8a8a8a", $legendText="deliberately not enabled")
 
-Person(engineer, "Engineer / on-call", "Raises incidents, asks questions, approves gated actions")
+Person(engineer, "Engineer / on-call", "Raises incidents, asks questions, approves or rejects gated actions")
 
-System(platform, "SRE + ITSM agent platform", "Ruflo-orchestrated agent swarm. Triages a request, investigates infrastructure read-only, or handles an ITSM ticket. Every write is gated by a shared risk tier.")
+System(platform, "SRE + ITSM agent platform", "A policy-gated MCP bridge hosting a triage router and two specialists. Classifies a request, investigates infrastructure read-only, or works an ITSM ticket. Every tool call for every backend passes through one risk-tier policy.")
 
-System_Ext(obs, "Observability", "Kubernetes, Prometheus, Thanos, Grafana, Azure MCP — all read-only")
-System_Ext(itsm, "ITSM backend", "Jira Service Management today; Jira Service Management / ServiceNow swappable without touching the swarm")
-System_Ext(confluence, "Confluence", "Knowledge base, read-only over REST")
-System_Ext(runbooks, "Runbook MCP", "holmesgpt-runbook-mcp — search, RCA, and draft PRs")
-System_Ext(llm, "LLM inference", "Azure AI Foundry now; Modelplane self-host later, alongside")
+System_Ext(obs, "Observability", "Kubernetes, Prometheus, Thanos, Grafana — read-only. Azure, AWS or GCP MCP attach the same way.")
+System_Ext(itsm, "ITSM backend", "Jira Service Management via Atlassian's Rovo MCP. Freshservice implemented; ServiceNow swappable without touching the agents or the policy.")
+System_Ext(runbooks, "Runbook MCP", "holmesgpt-runbook-mcp — reads Confluence and returns structured runbooks, plus RCA and draft PRs")
+System_Ext(llm, "LLM inference", "Anthropic today; Foundry and Modelplane are drop-in alternatives in llm-providers/")
 System_Ext(remediation, "Kubernetes Remediation MCP", "restart / scale / drain", $tags="notEnabled")
 
-Rel(engineer, platform, "Reports incidents, asks questions", "Slack / alert / ticket")
-Rel(platform, engineer, "Requests approval for tier 3+, drafts tier 4", "Slack")
+Rel(engineer, platform, "Reports incidents, asks questions", "Slack (Socket Mode)")
+Rel(platform, engineer, "Requests approval for tier 3, drafts tier 4", "Slack — Approve / Reject")
 Rel(platform, obs, "Investigates", "read-only")
-Rel(platform, itsm, "Searches, comments, updates", "MCP")
-Rel(platform, confluence, "Looks up", "REST, read-only")
+Rel(platform, itsm, "Searches, comments, creates", "MCP")
 Rel(platform, runbooks, "Searches; opens draft PRs", "MCP")
-Rel(platform, llm, "Agent reasoning", "HTTPS")
+Rel(platform, llm, "Classification and agent reasoning", "HTTPS")
 Rel_D(platform, remediation, "Would need tier 3/4 first", "not wired in")
 
 SHOW_LEGEND()
