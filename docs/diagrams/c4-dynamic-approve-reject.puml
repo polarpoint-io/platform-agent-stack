@@ -1,0 +1,52 @@
+@startuml c4-dynamic-approve-reject
+' C4 dynamic view — the two ways a human ends a parked tier-3 action.
+'
+' Companion to c4-dynamic-gated-action, which traces the THIRD ending: the
+' human approves and the BACKEND refuses, so the approval stays pending. Keep
+' both — that one documents a failure mode this one does not show.
+'
+' Traced from live runs on 2026-08-19 against Jira: two identical requests
+' parked, one released (DO-4 created) and one declined (nothing created).
+!include <C4/C4_Dynamic>
+
+title Dynamic view — approve or reject, and the record either way
+
+AddRelTag("gated", $textColor="#c1121f", $lineColor="#c1121f", $lineStyle=DashedLine())
+AddRelTag("never", $textColor="#c1121f", $lineColor="#c1121f", $lineStyle=DottedLine())
+AddRelTag("metric", $textColor="#2a9d8f", $lineColor="#2a9d8f", $lineStyle=DottedLine())
+AddRelTag("audit", $textColor="#5a189a", $lineColor="#5a189a")
+
+Person(approver, "Approver", "On the chat.approvers allowlist")
+Container(chat, "chat adapter", "chat/slack.js — Approve AND Reject buttons")
+Container(api, "Private API", "Express :3000")
+Container(executor, "executor", "executor.js")
+ContainerDb(policy, "risk-tiers.yaml", "policy/")
+ContainerDb(pending, "pending_approvals", "Mongo")
+ContainerDb(audit, "approval_decisions", "Mongo — outlives the pending record")
+ContainerDb(metrics, "metrics registry", "metrics.js")
+System_Ext(jira, "Jira (Rovo MCP)", "project DO")
+
+Rel(approver, chat, "1. 'Raise a ticket: we need a spare keyboard'")
+Rel(chat, api, "2. POST /triage -> 202")
+Rel(api, executor, "3. classified itsm_ticket -> execute('create_ticket')")
+Rel(executor, policy, "4. decide('create_ticket')")
+Rel(policy, executor, "5. tier_3_approval -> park", $tags="gated")
+Rel(executor, pending, "6. Park WITH the injected cloudId and projectKey, so the approver can see WHERE it lands")
+Rel(executor, metrics, "7. actions_total{action=park,outcome=parked}++", $tags="metric")
+Rel(executor, chat, "8. Approve / Reject, both gated by the same allowlist")
+Rel(executor, jira, "NEVER called while parked", $tags="never")
+
+Rel(approver, api, "9a. APPROVE {actor} — actor is required", $tags="gated")
+Rel(api, executor, "10a. approve(id, actor)")
+Rel(executor, jira, "11a. createJiraIssue -> DO-4")
+Rel(executor, pending, "12a. consume the pending record")
+Rel(executor, audit, "13a. EXECUTED: who, when, tool, target", $tags="audit")
+
+Rel(approver, api, "9b. REJECT {actor, reason}", $tags="gated")
+Rel(api, executor, "10b. reject(id, actor, reason)")
+Rel(executor, jira, "11b. still never called — nothing is created", $tags="never")
+Rel(executor, audit, "12b. REJECTED: the 'no' is kept, with the reason", $tags="audit")
+Rel(executor, metrics, "13b. approval_decisions_total{outcome=rejected}++", $tags="metric")
+
+SHOW_LEGEND()
+@enduml

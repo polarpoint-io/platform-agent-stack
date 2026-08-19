@@ -71,11 +71,20 @@ NetworkPolicy rule — Teams on `:3979`, metrics on `:9090`.
 
 ![Component view](images/external/c4-component-bridge.png)
 
-### Dynamic — one tier-3 action
+### Dynamic — how a tier-3 action ends
 
-Traced from a real run: `create_ticket` parked instead of executing, and the
-release then failed against a suspended ITSM account *without consuming the
-approval*.
+Three endings, two diagrams, both traced from real runs. Keep both: the second
+documents a failure mode the first doesn't show.
+
+**Approved or rejected** — a human decides, and either decision is recorded
+against their name. Traced against Jira: two identical requests parked, one
+released (created `DO-4`) and one declined (nothing created).
+
+![Approve or reject](images/external/c4-dynamic-approve-reject.png)
+
+**Approved, then refused by the backend** — the human said yes and Freshservice
+returned `403 account_suspended`. The approval **stays pending** rather than
+being consumed, because a backend refusal must not spend a human decision.
 
 ![Gated action](images/external/c4-dynamic-gated-action.png)
 
@@ -98,6 +107,38 @@ mounted at all, because an unauthenticated public route that enqueues LLM work
 and raises tickets is an open invitation. In Grafana: *Alerting → Contact points
 → Webhook*, pointed at the `-endpoint` Service with an `Authorization: Bearer
 <token>` header.
+
+## Approvals
+
+A parked tier-3 action has three possible ends, and all three are recorded.
+
+| | |
+|---|---|
+| `POST /approvals/:id/approve` | Executes it. |
+| `POST /approvals/:id/reject` | Declines it. The backend is never called. |
+| `GET /approvals/decisions` | The audit trail — executed, rejected and backend_rejected alike. |
+
+**Rejecting exists because "no" is a decision.** Until it did, the only way to
+clear an action nobody wanted was deleting it out of MongoDB, which left no
+record that a human had considered it and declined — indistinguishable from a
+lost record. In Slack, Reject sits beside Approve: the confirm dialog's "Cancel"
+only dismisses the prompt and leaves the action parked, which is how a queue
+fills with decisions nobody made. Both buttons are gated by the same approver
+allowlist, since letting anyone clear another team's action is a denial of
+service on the queue.
+
+**An actor is required on both paths**, and its strength is recorded honestly.
+A shared bearer token authorises the call but cannot prove who sent it, so an
+HTTP actor is stored with `actorVerified: false`; a Slack identity the platform
+validated is stored `true`. Real per-person attribution needs OIDC — recording a
+weak name honestly labelled beats recording nothing.
+
+**Parked actions show their real target.** Injected deployment facts (`cloudId`,
+`projectKey`) are applied at call time, so a parked record used to show them as
+`undefined` — a human was asked to approve "create a ticket" without being told
+which project, or which Atlassian site. They are now shown at park time too.
+Preview only: `callTool` injects again regardless, so a config change between
+park and approve cannot be staged by a stale record.
 
 ## Security
 

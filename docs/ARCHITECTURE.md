@@ -240,8 +240,17 @@ trade is a public authenticated endpoint, so it mounts on the same separate
 listener as the Teams route and fails closed without its own token. Both intakes
 share the fingerprint dedupe, so running both cannot double-triage.
 
-The remaining blocker is commercial: the Freshservice account is suspended, so
-no ITSM action can execute regardless of policy.
+**A parked action can now be declined, and every decision is kept.** Approving
+used to be the only outcome; clearing an unwanted action meant deleting it from
+MongoDB, which left no record that a human had considered it and said no.
+`POST /approvals/:id/reject` declines without ever calling the backend, Slack
+carries a Reject button beside Approve, and an `approval_decisions` collection
+outlives the pending record with actor, reason, tool, target and both
+timestamps. "Who approved DO-4, when, and why was the other one refused" is now
+answerable from the system itself.
+
+The ITSM backend is **Jira** via Atlassian's Rovo MCP Server, targeting the DO
+project — Freshservice's account is suspended and returns 403 on every call.
 
 ### Being honest about the limits
 
@@ -250,7 +259,14 @@ no ITSM action can execute regardless of policy.
 - It is only as good as its backends — today's test found a suspended ITSM
   account that would have blocked every ticket action.
 - The approval token is a shared secret, so it identifies *a* holder, not *which*
-  person. Chat approvals give per-person attribution via `chat.approvers`; the
-  HTTP path does not. An OIDC/JWT guard would, and is the natural next step.
+  person. An actor is now required and recorded on every decision, but an HTTP
+  one is self-asserted and stored `actorVerified: false` to say so. Chat
+  identities are platform-verified. Real per-person attribution needs OIDC.
+- `/triage` itself takes no credentials. Harmless while the NetworkPolicy admits
+  nobody to that port and both front doors dial out, but adding one entry to
+  `networkPolicy.allowedNamespaces` would let anything in-cluster spend LLM
+  budget and raise tickets. Guard it before opening that list.
+- Nothing alerts on the metrics yet. The series are correct; no one is paged
+  when the poller stalls or `platform_agent_leader` reads 0.
 - The value depends on tiering being maintained honestly. A team that promotes
   everything to tier 1 to reduce friction has bought nothing.
