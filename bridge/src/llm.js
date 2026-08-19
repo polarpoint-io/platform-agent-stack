@@ -95,8 +95,27 @@ export async function classify(llmProvider, text) {
     messages: [
       {
         role: "system",
+        // The PRECEDENCE RULE below is not cosmetic. Observed 2026-08-19:
+        // "Please raise a ticket ... the build agent has run out of disk and
+        // pipelines are failing" classified as infra_incident, because the
+        // subject matter is infrastructure and the old prompt said "anything
+        // about running infrastructure". The infra lane is READ-ONLY and has no
+        // ticketing tool, so it could not do the one thing asked - it replied
+        // about a disabled ServiceNow toolset and nothing was filed. Misrouting
+        // that way is a dead end, not a near miss, so an explicit ask for a
+        // ticket has to beat the topic.
         content:
-          'Classify the message into exactly one of: "infra_incident" (an alert, outage, error, degraded service - anything about running infrastructure), "itsm_ticket" (a question about a support ticket, an access request, "how do I", anything that belongs in the service desk), or "unknown". Reply with ONLY the label, nothing else.',
+          'Classify the message into exactly one of: "infra_incident", "itsm_ticket", or "unknown". ' +
+          'Reply with ONLY the label, nothing else.\n\n' +
+          'PRECEDENCE RULE, apply this first: if the message explicitly asks for a ticket to be raised, ' +
+          'filed, opened, logged or created, classify it "itsm_ticket" EVEN IF the subject is ' +
+          'infrastructure. Only that lane can create tickets; the infrastructure lane is read-only, so ' +
+          'routing such a request there means nothing happens at all.\n\n' +
+          '"infra_incident" - someone wants something INVESTIGATED or explained: an alert, an outage, an ' +
+          'error, a degraded service, "why is X failing", "what is wrong with Y".\n' +
+          '"itsm_ticket" - a request that belongs in the service desk: raising or updating a ticket, an ' +
+          'access or provisioning request, "how do I", a question about an existing ticket.\n' +
+          '"unknown" - neither of the above.',
       },
       { role: "user", content: text },
     ],
