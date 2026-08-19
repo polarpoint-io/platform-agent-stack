@@ -108,6 +108,24 @@ and raises tickets is an open invitation. In Grafana: *Alerting → Contact poin
 → Webhook*, pointed at the `-endpoint` Service with an `Authorization: Bearer
 <token>` header.
 
+## Knowledge lookup
+
+Runbooks come from **`holmesgpt-runbook-mcp`**, not from the ITSM backend.
+It reads the Confluence space directly and returns structured runbooks —
+service, failure mode, alert name, severity, MTTR, owner — rather than raw pages
+for a CQL string. That structure is what an agent triaging an incident needs.
+
+```
+runbook_search {}  ->  found 1
+  "RB - payments-api OOMKill"   service=payments-api  failure_mode=OOMKill
+  severity=P1-P2  mttr=15m      spaces/RAID/pages/372179108
+```
+
+So the ITSM mapping deliberately leaves `list_kb_articles`, `search_confluence`
+and `get_confluence_page` unmapped. Mapping them would give the model two ways
+to ask the same question — one of them worse — and would require Confluence
+scopes on the ITSM credential for no gain. **The ITSM backend's job is tickets.**
+
 ## Approvals
 
 A parked tier-3 action has three possible ends, and all three are recorded.

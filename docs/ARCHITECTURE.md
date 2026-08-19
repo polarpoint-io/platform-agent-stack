@@ -59,6 +59,12 @@ touching the policy.
 - **`itsm_ticket`** → maps natural language to a verb (`create_ticket`,
   `add_ticket_comment`, …) and hands it to the ITSM backend.
 
+Knowledge lookup belongs to neither lane's backend: `holmesgpt-runbook-mcp`
+serves it for both, reading Confluence and returning structured runbooks
+(service, failure mode, severity, MTTR, owner) rather than raw pages. The ITSM
+mapping deliberately leaves its own Confluence verbs unmapped so the model has
+one way to ask, not two.
+
 ### The policy engine
 
 Every tool call for every backend goes through `executor.js` first. There is no
@@ -268,5 +274,8 @@ project — Freshservice's account is suspended and returns 403 on every call.
   budget and raise tickets. Guard it before opening that list.
 - Nothing alerts on the metrics yet. The series are correct; no one is paged
   when the poller stalls or `platform_agent_leader` reads 0.
+- The runbook URLs render with a double slash (`polarpoint.atlassian.net//wiki`)
+  because `CONFLUENCE_URL` carries a trailing slash and the code appends
+  `/wiki`. Cosmetic, but it is in every runbook link the agent hands a human.
 - The value depends on tiering being maintained honestly. A team that promotes
   everything to tier 1 to reduce friction has bought nothing.

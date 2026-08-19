@@ -20,18 +20,24 @@ actions:
   search_tickets:       searchJiraIssuesUsingJql
   get_ticket:           getJiraIssue
 
-  # Knowledge base articles live in Confluence, not Jira. UNMAPPED, because the
-  # service-account key carries no Confluence scopes: tools/list on 2026-08-18
-  # returned 18 tools and neither searchConfluenceUsingCql nor getConfluencePage
-  # was among them.
+  # Knowledge lookup is DELIBERATELY NOT MAPPED HERE - it is holmesgpt-runbook-mcp's
+  # job, and that server does it better.
   #
-  # Unmapped is the honest state. An unmapped verb cannot execute at all, which
-  # is a clean "not available"; a MAPPED verb whose tool is absent fails on every
-  # call and reads like a bug in the agent. assertVerbsResolve() would also warn
-  # about all three at every boot.
+  # These three verbs would point at searchConfluenceUsingCql/getConfluencePage,
+  # which return raw pages for a CQL string. runbook_mcp already reads the same
+  # Confluence space and returns STRUCTURED runbooks - service, failure_mode,
+  # alert_name, severity, mttr, owner - which is what an agent triaging an
+  # incident actually needs. Verified live 2026-08-19: runbook_search returned
+  # "RB - payments-api OOMKill" (service=payments-api, failure_mode=OOMKill,
+  # severity=P1-P2, mttr=15m) from spaces/RAID. Both are tier_1.
   #
-  # Restore these three lines when a key with read:confluence-content.all and
-  # search:confluence exists. Nothing else needs to change.
+  # Mapping these as well would give the model two ways to ask the same question,
+  # one of them worse, and would need Confluence scopes on the Atlassian
+  # service-account key for no gain. The ITSM backend's job is tickets.
+  #
+  # If you ever DO want raw Confluence search through the ITSM lane, note the key
+  # needs read:confluence-content.all and search:confluence - the current one has
+  # neither, and tools/list confirmed neither tool is exposed.
   # list_kb_articles:     searchConfluenceUsingCql
   # get_confluence_page:  getConfluencePage
   # search_confluence:    searchConfluenceUsingCql
