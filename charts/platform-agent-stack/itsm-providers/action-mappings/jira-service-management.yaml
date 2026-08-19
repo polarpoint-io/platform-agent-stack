@@ -20,27 +20,21 @@ actions:
   search_tickets:       searchJiraIssuesUsingJql
   get_ticket:           getJiraIssue
 
-  # Knowledge lookup is DELIBERATELY NOT MAPPED HERE - it is holmesgpt-runbook-mcp's
-  # job, and that server does it better.
+  # NO KNOWLEDGE VERBS HERE, deliberately. list_kb_articles, search_confluence
+  # and get_confluence_page stay unmapped for this provider because
+  # holmesgpt-runbook-mcp already serves that lane, from the same Confluence
+  # space, and better: it returns STRUCTURED runbooks (service, failure_mode,
+  # alert_name, severity, mttr, owner) where searchConfluenceUsingCql returns
+  # raw pages for a CQL string. Verified live 2026-08-19 - runbook_search found
+  # "RB - payments-api OOMKill" in spaces/RAID. Both paths are tier_1.
   #
-  # These three verbs would point at searchConfluenceUsingCql/getConfluencePage,
-  # which return raw pages for a CQL string. runbook_mcp already reads the same
-  # Confluence space and returns STRUCTURED runbooks - service, failure_mode,
-  # alert_name, severity, mttr, owner - which is what an agent triaging an
-  # incident actually needs. Verified live 2026-08-19: runbook_search returned
-  # "RB - payments-api OOMKill" (service=payments-api, failure_mode=OOMKill,
-  # severity=P1-P2, mttr=15m) from spaces/RAID. Both are tier_1.
+  # Mapping them would give the model two ways to ask one question, the worse
+  # one included, and would need Confluence scopes on the Atlassian key for no
+  # gain. The ITSM backend's job is tickets.
   #
-  # Mapping these as well would give the model two ways to ask the same question,
-  # one of them worse, and would need Confluence scopes on the Atlassian
-  # service-account key for no gain. The ITSM backend's job is tickets.
-  #
-  # If you ever DO want raw Confluence search through the ITSM lane, note the key
-  # needs read:confluence-content.all and search:confluence - the current one has
-  # neither, and tools/list confirmed neither tool is exposed.
-  # list_kb_articles:     searchConfluenceUsingCql
-  # get_confluence_page:  getConfluencePage
-  # search_confluence:    searchConfluenceUsingCql
+  # They remain in ../../policy/risk-tiers.yaml because the FRESHSERVICE mapping
+  # does implement two of them against its own solution-article tools. A verb
+  # being untiered is a different thing from a provider not implementing it.
 
   # tier 2 — low-risk write, executes and notifies
   add_ticket_comment:   addCommentToJiraIssue
