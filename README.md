@@ -40,17 +40,6 @@ platform-agent-stack/
 
 ## Architecture
 
-C4 model, using PlantUML's bundled C4 standard library (`!include
-<C4/C4_Context>`) so there's nothing to vendor or fetch.
-
-Source is `docs/diagrams/*.puml`; rendered PNGs land in
-`images/external/`. GitHub can't render PlantUML in markdown, so the
-images are committed — but you don't render them yourself. Push a
-`.puml` change and the `diagrams` workflow renders and commits the PNG,
-the same `plantuml/plantuml` container `markdown-pol-docs` uses.
-`docs/diagrams/render.sh` runs the identical thing locally if you want a
-preview first; it needs only docker.
-
 ### Level 1 — system context
 
 ![System context](images/external/c4-context.png)
