@@ -47,6 +47,28 @@ the action would reach the backend ungated — silently. Fail at render.
 {{- end -}}
 
 {{/*
+Freshservice needs its host, and it is a deployment fact rather than a secret.
+
+It used to be hardcoded to one tenant inside the provider file, which made that
+file unusable by anyone else and silently ignored the FRESHSERVICE_DOMAIN the
+ExternalSecret was already supplying. Now it comes from values, and an empty
+value is caught here - otherwise the literal string "${FRESHSERVICE_DOMAIN}"
+would be sent to the API as a hostname, which fails as a DNS error somewhere
+deep in a uvx-spawned Python process and looks like anything but a config
+mistake.
+*/}}
+{{- define "platform-agent-stack.assertFreshservice" -}}
+{{- if eq .Values.itsmProvider "freshservice" -}}
+{{- if not .Values.freshservice.domain -}}
+{{- fail "itsmProvider=freshservice requires freshservice.domain (e.g. acme.freshservice.com). It is the tenant host every API call is made against, and it is no longer hardcoded in the provider file." -}}
+{{- end -}}
+{{- if not (hasKey .Values.externalSecrets.keys "itsm") -}}
+{{- fail "itsmProvider=freshservice requires an externalSecrets.keys.itsm entry supplying FRESHSERVICE_APIKEY." -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Jira Service Management needs two deployment facts that Atlassian's API-key
 auth does NOT supply for you.
 

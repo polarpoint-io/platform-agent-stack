@@ -42,6 +42,18 @@ jira:
   # mandated in the search_tickets hint. Unquoted, Jira rejects the query.
   projectKey: "DO"
 
+# Freshservice, used only when itsmProvider is freshservice.
+#
+# The host is a DEPLOYMENT fact and belongs here, not baked into the provider
+# file. It was hardcoded to one tenant, which made the provider unusable by
+# anyone else AND silently ignored the FRESHSERVICE_DOMAIN the ExternalSecret
+# was already supplying - two sources for one value, one of them dead.
+#
+# Chart FAILS TO RENDER if freshservice is selected and this is empty, rather
+# than sending a literal ${FRESHSERVICE_DOMAIN} to the API.
+freshservice:
+  domain: "polarpoint.freshservice.com"
+
 # Per-tool-call timeout for MCP requests. The SDK default of 60s is too
 # short for tools that call an LLM and then a git forge.
 mcpToolTimeoutMs: 180000
@@ -212,7 +224,10 @@ externalSecrets:
   keys:
     itsm:
       remoteKey: platform-agent-stack-itsm
-      properties: [FRESHSERVICE_DOMAIN, FRESHSERVICE_APIKEY]
+      # Domain deliberately NOT here - it is freshservice.domain above.
+      # Listing it in both places meant the secret supplied a value that
+      # the hardcoded provider file then ignored.
+      properties: [FRESHSERVICE_APIKEY]
     llm:
       remoteKey: platform-agent-stack-llm
       properties: [ANTHROPIC_API_KEY]

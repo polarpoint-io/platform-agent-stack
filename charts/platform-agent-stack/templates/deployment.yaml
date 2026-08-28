@@ -68,6 +68,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            {{- if eq .Values.itsmProvider "freshservice" }}
+            # Substituted into itsm-providers/providers/freshservice.mcp.json by
+            # config.js. The host is not a secret; the API key still comes from
+            # ESO via envFrom.
+            - name: FRESHSERVICE_DOMAIN
+              value: "{{ .Values.freshservice.domain }}"
+            {{- end }}
             {{- if eq .Values.itsmProvider "jira-service-management" }}
             # Substituted into itsm-providers/providers/jira-service-management.mcp.json
             # by config.js. ATLASSIAN_API_KEY arrives via envFrom from the
