@@ -13,6 +13,8 @@
 
 import { randomUUID } from "node:crypto";
 
+import { persistableCaller } from "./identity.js";
+
 export const QUEUED = "queued";
 export const RUNNING = "running";
 export const DONE = "done";
@@ -22,13 +24,19 @@ export const FAILED = "failed";
 // Anything running longer than this is treated as abandoned and requeued.
 const STALE_AFTER_MS = parseInt(process.env.TRIAGE_STALE_AFTER_MS || "600000", 10);
 
+// Delegated ARM tokens stay in process memory, never in the job store / GET body.
+const armTokens = new Map();
+
 export function createJobs(collection) {
   return {
-    async enqueue({ text, source = null }) {
+    async enqueue({ text, source = null, caller = null }) {
       const id = randomUUID();
+      const storedCaller = persistableCaller(caller);
+      if (caller?.armToken) armTokens.set(id, caller.armToken);
       await collection.set(id, {
         text,
         source,
+        caller: storedCaller,
         status: QUEUED,
         createdAt: new Date().toISOString(),
         attempts: 0,
@@ -47,14 +55,19 @@ export function createJobs(collection) {
 
     /** Take the oldest queued job, marking it running. Undefined if none. */
     async claim() {
-      return collection.claimOldest(
+      const job = await collection.claimOldest(
         { status: QUEUED },
         { status: RUNNING },
         { startedAt: new Date().toISOString() }
       );
+      if (!job) return undefined;
+      const token = armTokens.get(job.id);
+      if (!token || !job.caller) return job;
+      return { ...job, caller: { ...job.caller, armToken: token } };
     },
 
     async complete(id, result) {
+      armTokens.delete(id);
       const job = await collection.get(id);
       if (!job) return;
       await collection.set(id, {
@@ -66,6 +79,7 @@ export function createJobs(collection) {
     },
 
     async fail(id, error) {
+      armTokens.delete(id);
       const job = await collection.get(id);
       if (!job) return;
       await collection.set(id, {

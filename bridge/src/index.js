@@ -19,6 +19,8 @@ import { createChatAdapter } from "./chat/index.js";
 import { startAlertPoller, createAlertWebhook } from "./alerts.js";
 import { startLeaderElection } from "./leader.js";
 import { requireApprovalToken } from "./auth.js";
+import { callerFromTriageBody } from "./identity.js";
+import { identityRefusals } from "./metrics.js";
 import {
   collect as collectMetrics,
   CONTENT_TYPE as METRICS_CONTENT_TYPE,
@@ -51,13 +53,13 @@ async function main() {
 
   // The work a queued /triage actually does - the same routing the endpoint
   // used to do inline.
-  async function runTriage({ text }) {
+  async function runTriage({ text, caller = null }) {
     const lane = await classify(config.llmProvider, text);
     if (lane === "infra_incident") {
-      return { lane, ...(await handleInfraRequest({ holmesUrl: config.holmesUrl, executor, text })) };
+      return { lane, ...(await handleInfraRequest({ holmesUrl: config.holmesUrl, executor, text, caller })) };
     }
     if (lane === "itsm_ticket") {
-      return { lane, ...(await handleItsmRequest({ llmProvider: config.llmProvider, actionMappings: config.actionMappings, executor, policy, backends, text })) };
+      return { lane, ...(await handleItsmRequest({ llmProvider: config.llmProvider, actionMappings: config.actionMappings, executor, policy, backends, text, caller })) };
     }
     return { lane: "unknown", reply: "Could not classify this request as an infra incident or an ITSM ticket." };
   }
@@ -76,7 +78,7 @@ async function main() {
       const started = process.hrtime.bigint();
       let lane = "unknown";
       try {
-        const result = await runTriage({ text: job.text });
+        const result = await runTriage({ text: job.text, caller: job.caller || null });
         lane = result?.lane || "unknown";
         triageJobs.inc({ lane, status: "done" });
         return result;
@@ -134,17 +136,36 @@ async function main() {
     const text = req.body?.text;
     if (!text) return res.status(400).json({ error: "body.text is required" });
 
+    let caller;
+    try {
+      caller = callerFromTriageBody(req.body);
+    } catch (err) {
+      if (err.status === 401 || err.code === "MISSING_IDENTITY") {
+        identityRefusals.inc({ reason: "missing_user_oid" });
+        return res.status(401).json({ error: err.message });
+      }
+      throw err;
+    }
+
     if (req.query.wait === "true") {
       try {
-        return res.json(await runTriage({ text }));
+        return res.json(await runTriage({ text, caller }));
       } catch (err) {
+        if (err.status === 401 || err.code === "MISSING_IDENTITY") {
+          identityRefusals.inc({ reason: "missing_user_oid" });
+          return res.status(401).json({ error: err.message });
+        }
         console.error(`[triage] ${err.stack}`);
         return res.status(502).json({ error: err.message });
       }
     }
 
     try {
-      const id = await jobs.enqueue({ text, source: req.body?.source || null });
+      const id = await jobs.enqueue({
+        text,
+        source: req.body?.source || null,
+        caller,
+      });
       res.status(202).json({ id, status: QUEUED, poll: `/triage/${id}` });
     } catch (err) {
       console.error(`[triage] could not enqueue: ${err.stack}`);

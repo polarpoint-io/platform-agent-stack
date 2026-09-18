@@ -2,22 +2,24 @@
 // Endpoint: POST /api/chat, request field ChatRequest.ask, response
 // field ChatResponse.analysis.
 
-export async function askHolmes(holmesUrl, question) {
+import { holmesChatBody, sanitizeAzureError } from "./identity.js";
+
+export async function askHolmes(holmesUrl, question, caller) {
   if (!holmesUrl) {
     throw new Error("HOLMES_URL is not configured");
   }
   const resp = await fetch(`${holmesUrl.replace(/\/$/, "")}/api/chat`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ask: question, stream: false }),
+    body: JSON.stringify(holmesChatBody(question, caller)),
   });
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
-    throw new Error(`Holmes /api/chat returned ${resp.status}: ${text.slice(0, 500)}`);
+    throw new Error(`Holmes /api/chat returned ${resp.status}: ${sanitizeAzureError(text.slice(0, 500))}`);
   }
   const data = await resp.json();
   return {
-    analysis: data.analysis,
+    analysis: sanitizeAzureError(data.analysis || ""),
     toolCalls: data.tool_calls || [],
   };
 }
