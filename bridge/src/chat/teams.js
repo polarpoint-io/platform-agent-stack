@@ -72,13 +72,17 @@ export function createTeamsAdapter({ config, deps }) {
           // restart silently stranded every in-flight Teams request. It is
           // plain JSON, so it rides along with the job and survives whatever
           // the job store survives.
+          const from = context.activity.from || {};
           const id = await jobs.enqueue({
             text,
             source: {
               type: "teams",
               ref: TurnContext.getConversationReference(context.activity),
-              user: context.activity.from?.id,
+              user: from.id,
             },
+            caller: from.aadObjectId
+              ? { oid: String(from.aadObjectId), upn: from.name || null, armToken: null }
+              : null,
           });
 
           // Same honest ack as Slack: queued, not done. The Bot Framework's

@@ -3,7 +3,8 @@
 // parked and must be explicitly approved via POST /approvals/:id/approve.
 
 import { randomUUID } from "node:crypto";
-import { actions as actionsMetric, approvalDecisions, toolCalls, toolDuration } from "./metrics.js";
+import { actions as actionsMetric, approvalDecisions, identityRefusals, toolCalls, toolDuration } from "./metrics.js";
+import { authorizeToolCall, constrainItsmArgs } from "./identity.js";
 
 // An MCP tool that fails reports it IN the result, as isError, with a
 // 200-shaped response - it does not throw. Returning that verbatim made
@@ -129,6 +130,19 @@ export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack,
   }
 
   async function execute(verb, args, context = {}) {
+    const resolution = policy.resolve?.(verb);
+    const authz = authorizeToolCall({
+      backend: resolution?.backend,
+      verb,
+      caller: context.caller,
+    });
+    if (authz.action === "blocked") {
+      identityRefusals.inc({ reason: authz.reason || "missing_user_token" });
+      recordDecision(verb, { tier: "unknown", action: "blocked" }, "blocked");
+      return { action: "blocked", reason: authz.reason, result: null };
+    }
+
+    args = constrainItsmArgs(verb, args, context.caller);
     const decision = policy.decide(verb);
 
     if (decision.action === "blocked") {

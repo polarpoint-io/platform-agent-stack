@@ -219,3 +219,22 @@ test("rewriteMongoHost is a no-op without an override", async () => {
   assert.equal(rewriteMongoHost(uri, ""), uri, "must not mangle the URI when unused");
   assert.equal(rewriteMongoHost("", "x:27017"), "");
 });
+
+test("caller oid is stored and ARM token is not returned from get()", async () => {
+  const jobs = await newJobs();
+  const id = await jobs.enqueue({
+    text: "nodes unhealthy",
+    source: { type: "teams" },
+    caller: {
+      oid: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      upn: "user@example.com",
+      armToken: "secret-token-value",
+    },
+  });
+  const stored = await jobs.get(id);
+  assert.equal(stored.caller.oid, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+  assert.equal(stored.caller.upn, "user@example.com");
+  assert.equal(stored.caller.armToken, undefined);
+  const claimed = await jobs.claim();
+  assert.equal(claimed.caller.armToken, "secret-token-value");
+});

@@ -62,7 +62,7 @@ export function buildToolSchemas(actionMappings, policy, backends) {
   return schemas;
 }
 
-export async function handleItsmRequest({ llmProvider, actionMappings, executor, policy, backends, text }) {
+export async function handleItsmRequest({ llmProvider, actionMappings, executor, policy, backends, text, caller = null }) {
   const tools = buildToolSchemas(actionMappings, policy, backends);
   if (!tools.length) {
     return {
@@ -95,7 +95,7 @@ export async function handleItsmRequest({ llmProvider, actionMappings, executor,
     } catch {
       // model returned malformed JSON args - fall through with empty args
     }
-    const decision = await executor.execute(verb, args, { summary: text.slice(0, 200) });
+    const decision = await executor.execute(verb, args, { summary: text.slice(0, 200), caller });
     actions.push(decision);
   }
   return { reply: message?.content || null, actions };

@@ -6,13 +6,13 @@
 
 import { askHolmes } from "./holmes.js";
 
-export async function handleInfraRequest({ holmesUrl, executor, text }) {
-  const holmes = await askHolmes(holmesUrl, text);
+export async function handleInfraRequest({ holmesUrl, executor, text, caller = null }) {
+  const holmes = await askHolmes(holmesUrl, text, caller);
 
   // Read-only, tier_1_auto - safe to run alongside Holmes without
   // waiting on anything.
   const runbookSearch = await executor
-    .execute("runbook_search", { query: text }, { summary: "supporting runbook lookup" })
+    .execute("runbook_search", { query: text }, { summary: "supporting runbook lookup", caller })
     .catch((err) => ({ action: "error", reason: err.message }));
 
   return {
