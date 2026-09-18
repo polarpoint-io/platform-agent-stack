@@ -4,7 +4,7 @@
 
 import { randomUUID } from "node:crypto";
 import { actions as actionsMetric, approvalDecisions, identityRefusals, toolCalls, toolDuration } from "./metrics.js";
-import { authorizeToolCall, constrainItsmArgs } from "./identity.js";
+import { authorizeToolCall, constrainItsmArgs, filterItsmResult } from "./identity.js";
 
 // An MCP tool that fails reports it IN the result, as isError, with a
 // 200-shaped response - it does not throw. Returning that verbatim made
@@ -184,7 +184,11 @@ export function createExecutor({ policy, backends, slackWebhookUrl, notifySlack,
       result = assertToolOk(
         decision.backend,
         decision.tool,
-        await callTimed(decision.backend, decision.tool, args),
+        filterItsmResult(
+          verb,
+          await callTimed(decision.backend, decision.tool, args),
+          context.caller
+        ),
         resultChecks[decision.backend]
       );
     } catch (err) {

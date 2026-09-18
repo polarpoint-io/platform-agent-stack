@@ -32,8 +32,10 @@ export function requireCaller(body) {
 }
 
 /**
- * Teams HTTP front door must identify the user. Alert poller / CLI (no
- * source.type=teams and no userOid) keep the previous unauthenticated path.
+ * On-Behalf-Of is opt-in. Slack, CLI, alert pollers, and any caller that
+ * omits source.type=teams and userOid keep the previous unauthenticated
+ * path (workload identity / org ITSM key). Teams, or any body that
+ * includes userOid, fail closed without a verified caller.
  */
 export function callerFromTriageBody(body) {
   const isTeams = body?.source?.type === "teams";
@@ -79,13 +81,98 @@ export function authorizeToolCall({ backend, verb, caller }) {
   return { action: "allow" };
 }
 
+function emailQueryClause(upn) {
+  const safe = String(upn || "").replace(/'/g, "");
+  return `email:'${safe}'`;
+}
+
 export function constrainItsmArgs(verb, args, caller) {
   const out = { ...(args || {}) };
   if (!caller?.upn) return out;
+  if (verb === "filter_tickets" || verb === "search_tickets") {
+    const clause = emailQueryClause(caller.upn);
+    const raw = String(out.query || "").trim();
+    const stripped = raw
+      .replace(/\bemail\s*:\s*'[^']*'/gi, "")
+      .replace(/\bemail\s*:\s*"[^"]*"/gi, "")
+      .replace(/\s+AND\s+/gi, " AND ")
+      .replace(/^\s*AND\s*|\s*AND\s*$/gi, "")
+      .trim();
+    out.query = stripped ? `(${stripped}) AND ${clause}` : clause;
+    delete out.email;
+    return out;
+  }
   if (ITSM_CROSS_USER_VERBS.has(verb) || verb === "create_ticket") {
     out.email = caller.upn;
   }
   return out;
+}
+
+function toolResultText(result) {
+  const structured = result?.structuredContent?.result;
+  if (typeof structured === "string") return structured;
+  if (structured && typeof structured === "object") {
+    try {
+      return JSON.stringify(structured);
+    } catch {
+      return "";
+    }
+  }
+  return (result?.content || [])
+    .filter((c) => c?.type === "text")
+    .map((c) => c.text)
+    .join("\n");
+}
+
+function requesterEmailsFromItsmResult(result) {
+  const text = toolResultText(result);
+  const emails = new Set();
+  const add = (value) => {
+    const s = String(value || "").trim().toLowerCase();
+    if (s.includes("@")) emails.add(s);
+  };
+  try {
+    const parsed = JSON.parse(text);
+    const rows = Array.isArray(parsed)
+      ? parsed
+      : parsed?.tickets || parsed?.ticket
+        ? [].concat(parsed.tickets || parsed.ticket)
+        : parsed
+          ? [parsed]
+          : [];
+    for (const row of rows) {
+      if (!row || typeof row !== "object") continue;
+      add(row.email);
+      add(row.requester_email);
+      add(row.requester?.email);
+      add(row.requester?.mail);
+    }
+  } catch {
+    for (const match of text.matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)) {
+      add(match[0]);
+    }
+  }
+  return emails;
+}
+
+export function filterItsmResult(verb, result, caller) {
+  if (!caller?.upn) return result;
+  if (verb !== "get_ticket" && verb !== "get_ticket_by_id") return result;
+  const emails = requesterEmailsFromItsmResult(result);
+  if (emails.size === 0) return result;
+  if (emails.has(String(caller.upn).toLowerCase())) return result;
+  return {
+    content: [{ type: "text", text: GENERIC_DENIED }],
+    isError: false,
+  };
+}
+
+export function holmesChatHeaders(caller) {
+  const headers = { "content-type": "application/json" };
+  if (caller?.oid) headers["X-User-Oid"] = String(caller.oid);
+  if (caller?.upn) headers["X-User-Upn"] = String(caller.upn);
+  if (caller?.armToken) headers["X-Delegated-Arm"] = String(caller.armToken);
+  return headers;
 }
 
 export function holmesChatBody(text, caller) {

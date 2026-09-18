@@ -2,7 +2,7 @@
 // Endpoint: POST /api/chat, request field ChatRequest.ask, response
 // field ChatResponse.analysis.
 
-import { holmesChatBody, sanitizeAzureError } from "./identity.js";
+import { holmesChatBody, holmesChatHeaders, sanitizeAzureError } from "./identity.js";
 
 export async function askHolmes(holmesUrl, question, caller) {
   if (!holmesUrl) {
@@ -10,7 +10,7 @@ export async function askHolmes(holmesUrl, question, caller) {
   }
   const resp = await fetch(`${holmesUrl.replace(/\/$/, "")}/api/chat`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: holmesChatHeaders(caller),
     body: JSON.stringify(holmesChatBody(question, caller)),
   });
   if (!resp.ok) {
