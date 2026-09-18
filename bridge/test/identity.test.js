@@ -5,7 +5,9 @@ import {
   authorizeToolCall,
   callerFromTriageBody,
   constrainItsmArgs,
+  filterItsmResult,
   holmesChatBody,
+  holmesChatHeaders,
   persistableCaller,
   requireCaller,
   sanitizeAzureError,
@@ -79,8 +81,8 @@ test("ITSM ticket reads are scoped to the caller email", () => {
     oid: "oid",
     upn: "user@example.com",
   });
-  assert.equal(args.email, "user@example.com");
-  assert.equal(args.query, "open");
+  assert.equal(args.query, "(open) AND email:'user@example.com'");
+  assert.equal(args.email, undefined);
 });
 
 test("holmesChatBody carries identity; sanitizeAzureError hides 403 detail", () => {
@@ -95,4 +97,43 @@ test("holmesChatBody carries identity; sanitizeAzureError hides 403 detail", () 
     sanitizeAzureError("AuthorizationFailed: The client does not have authorization"),
     "not found or not permitted"
   );
+});
+
+test("holmesChatHeaders carry oid and ARM token", () => {
+  const headers = holmesChatHeaders({
+    oid: "oid",
+    upn: "user@example.com",
+    armToken: "secret-token-value",
+  });
+  assert.equal(headers["X-User-Oid"], "oid");
+  assert.equal(headers["X-Delegated-Arm"], "secret-token-value");
+});
+
+test("get_ticket for another requester is redacted", () => {
+  const result = filterItsmResult(
+    "get_ticket_by_id",
+    { content: [{ type: "text", text: JSON.stringify({ email: "other@example.com", id: 9 }) }] },
+    { oid: "oid", upn: "user@example.com" }
+  );
+  assert.equal(result.content[0].text, "not found or not permitted");
+});
+
+test("callers without userOid are not required to send On-Behalf-Of tokens", () => {
+  const caller = callerFromTriageBody({ text: "list nodes", source: { type: "slack" } });
+  assert.equal(caller, null);
+  const azure = authorizeToolCall({
+    backend: "azure",
+    verb: "resourceGraph",
+    caller: null,
+  });
+  assert.equal(azure.action, "allow");
+  const tickets = authorizeToolCall({
+    backend: "itsm",
+    verb: "search_tickets",
+    caller: null,
+  });
+  assert.equal(tickets.action, "allow");
+  const headers = holmesChatHeaders(null);
+  assert.equal(headers["X-Delegated-Arm"], undefined);
+  assert.equal(headers["X-User-Oid"], undefined);
 });
