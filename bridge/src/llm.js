@@ -104,6 +104,18 @@ export async function classify(llmProvider, text) {
         // about a disabled ServiceNow toolset and nothing was filed. Misrouting
         // that way is a dead end, not a near miss, so an explicit ask for a
         // ticket has to beat the topic.
+        //
+        // "how do I" used to sit unconditionally under itsm_ticket. Observed
+        // 2026-09-30: "how do I add an MCP for Grafana" landed in itsm_ticket,
+        // whose only tools are the ITSM provider's ticket/KB API - it has no
+        // Confluence search and no runbook tool, so the model could not look
+        // anything up and just asked clarifying questions instead of finding
+        // the runbook. infra_incident is the lane with runbook_search and real
+        // Confluence access. The distinction that actually matters is not the
+        // words "how do I", it's what's being asked how-to about: a technical/
+        // platform question belongs in infra_incident so it can be looked up;
+        // an access/provisioning "how do I" belongs in itsm_ticket because
+        // that's a service-desk request regardless of phrasing.
         content:
           'Classify the message into exactly one of: "infra_incident", "itsm_ticket", or "unknown". ' +
           'Reply with ONLY the label, nothing else.\n\n' +
@@ -111,10 +123,15 @@ export async function classify(llmProvider, text) {
           'filed, opened, logged or created, classify it "itsm_ticket" EVEN IF the subject is ' +
           'infrastructure. Only that lane can create tickets; the infrastructure lane is read-only, so ' +
           'routing such a request there means nothing happens at all.\n\n' +
-          '"infra_incident" - someone wants something INVESTIGATED or explained: an alert, an outage, an ' +
-          'error, a degraded service, "why is X failing", "what is wrong with Y".\n' +
+          '"infra_incident" - someone wants something INVESTIGATED, explained or looked up: an alert, ' +
+          'an outage, an error, a degraded service, "why is X failing", "what is wrong with Y", or a ' +
+          'technical/platform "how do I" or "how to" question about infrastructure, Kubernetes, an MCP ' +
+          'server, a runbook, or how something in the platform works or is configured (e.g. "how do I ' +
+          'add an MCP for Grafana", "how do I configure X"). This lane has runbook and documentation ' +
+          'search; route a technical how-to here even though it is phrased as "how do I".\n' +
           '"itsm_ticket" - a request that belongs in the service desk: raising or updating a ticket, an ' +
-          'access or provisioning request, "how do I", a question about an existing ticket.\n' +
+          'access or provisioning request (e.g. "how do I get access to X", "how do I request Y"), or ' +
+          'a question about an existing ticket.\n' +
           '"unknown" - neither of the above.',
       },
       { role: "user", content: text },
