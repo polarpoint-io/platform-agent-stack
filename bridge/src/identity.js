@@ -16,6 +16,12 @@ export const ITSM_CROSS_USER_VERBS = new Set([
   "search_tickets",
 ]);
 
+/** Freshservice scoping needs a real email, not a Teams display name. */
+export function isEmailLikeUpn(value) {
+  const s = String(value || "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
 export function requireCaller(body) {
   const oid = String(body?.userOid || body?.user?.oid || "").trim();
   if (!oid) {
@@ -71,7 +77,7 @@ export function authorizeToolCall({ backend, verb, caller }) {
       outcome: "blocked",
     };
   }
-  if (ITSM_CROSS_USER_VERBS.has(verb) && !caller.upn) {
+  if (ITSM_CROSS_USER_VERBS.has(verb) && !isEmailLikeUpn(caller.upn)) {
     return {
       action: "blocked",
       reason: "missing_user_token",
@@ -88,7 +94,7 @@ function emailQueryClause(upn) {
 
 export function constrainItsmArgs(verb, args, caller) {
   const out = { ...(args || {}) };
-  if (!caller?.upn) return out;
+  if (!isEmailLikeUpn(caller?.upn)) return out;
   if (verb === "filter_tickets" || verb === "search_tickets") {
     const clause = emailQueryClause(caller.upn);
     const raw = String(out.query || "").trim();
@@ -156,10 +162,15 @@ function requesterEmailsFromItsmResult(result) {
 }
 
 export function filterItsmResult(verb, result, caller) {
-  if (!caller?.upn) return result;
+  if (!isEmailLikeUpn(caller?.upn)) return result;
   if (verb !== "get_ticket" && verb !== "get_ticket_by_id") return result;
   const emails = requesterEmailsFromItsmResult(result);
-  if (emails.size === 0) return result;
+  if (emails.size === 0) {
+    return {
+      content: [{ type: "text", text: GENERIC_DENIED }],
+      isError: false,
+    };
+  }
   if (emails.has(String(caller.upn).toLowerCase())) return result;
   return {
     content: [{ type: "text", text: GENERIC_DENIED }],

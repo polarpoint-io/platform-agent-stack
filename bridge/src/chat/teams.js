@@ -73,6 +73,10 @@ export function createTeamsAdapter({ config, deps }) {
           // plain JSON, so it rides along with the job and survives whatever
           // the job store survives.
           const from = context.activity.from || {};
+          const props = from.additionalProperties || from.properties || {};
+          const upnCandidate = [props.userPrincipalName, props.email, props.mail]
+            .map((v) => (v == null ? "" : String(v).trim()))
+            .find((v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v));
           const id = await jobs.enqueue({
             text,
             source: {
@@ -80,8 +84,9 @@ export function createTeamsAdapter({ config, deps }) {
               ref: TurnContext.getConversationReference(context.activity),
               user: from.id,
             },
+            // Never use display name as UPN — Freshservice scoping needs an email.
             caller: from.aadObjectId
-              ? { oid: String(from.aadObjectId), upn: from.name || null, armToken: null }
+              ? { oid: String(from.aadObjectId), upn: upnCandidate || null, armToken: null }
               : null,
           });
 
