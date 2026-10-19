@@ -8,6 +8,7 @@ import {
   filterItsmResult,
   holmesChatBody,
   holmesChatHeaders,
+  isEmailLikeUpn,
   persistableCaller,
   requireCaller,
   sanitizeAzureError,
@@ -116,6 +117,27 @@ test("get_ticket for another requester is redacted", () => {
     { oid: "oid", upn: "user@example.com" }
   );
   assert.equal(result.content[0].text, "not found or not permitted");
+});
+
+test("get_ticket with no parseable requester email is denied", () => {
+  const result = filterItsmResult(
+    "get_ticket_by_id",
+    { content: [{ type: "text", text: JSON.stringify({ id: 9, subject: "secret" }) }] },
+    { oid: "oid", upn: "user@example.com" }
+  );
+  assert.equal(result.content[0].text, "not found or not permitted");
+});
+
+test("display-name UPN blocks ITSM ticket reads", () => {
+  assert.equal(isEmailLikeUpn("Jane Doe"), false);
+  assert.equal(isEmailLikeUpn("user@example.com"), true);
+  const blocked = authorizeToolCall({
+    backend: "itsm",
+    verb: "search_tickets",
+    caller: { oid: "oid", upn: "Jane Doe", armToken: null },
+  });
+  assert.equal(blocked.action, "blocked");
+  assert.equal(blocked.reason, "missing_user_token");
 });
 
 test("callers without userOid are not required to send On-Behalf-Of tokens", () => {
