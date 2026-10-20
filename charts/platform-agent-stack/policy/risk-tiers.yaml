@@ -37,11 +37,17 @@ risk_tiers:
       - add_ticket_comment
       - update_ticket_status
       - runbook_draft   # opens a draft PR/MR — inert until a human merges it
+      # Filing a ticket does not grant access. grant_access stays tier 4
+      # and unmapped. There is no separate access-request verb: any
+      # create_ticket the model calls, including an access request, runs
+      # now. Caller email is still forced from the verified UPN when one
+      # is present (identity.js). close_ticket and assign_ticket stay
+      # tier 3.
+      - create_ticket
 
   tier_3_approval:
     description: "Requires explicit human approval before executing"
     actions:
-      - create_ticket
       - close_ticket
       - assign_ticket
       - k8s_restart   # Kubernetes Remediation (MCP) — not currently enabled;

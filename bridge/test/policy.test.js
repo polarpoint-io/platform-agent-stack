@@ -30,7 +30,7 @@ function policyFor(provider) {
 const TIER_CASES = [
   ["search_tickets", "tier_1_auto", "execute", false],
   ["add_ticket_comment", "tier_2_notify", "execute", true],
-  ["create_ticket", "tier_3_approval", "park", true],
+  ["create_ticket", "tier_2_notify", "execute", true],
 ];
 
 for (const provider of ["jira-service-management", "freshservice"]) {
