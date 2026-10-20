@@ -38,8 +38,7 @@ actions:
 
   # tier 2 — low-risk write, executes and notifies
   add_ticket_comment:   addCommentToJiraIssue
-
-  # tier 3 — needs human approval before executing
+  # Files immediately. Shared policy with Freshservice; does not grant access.
   create_ticket:        createJiraIssue
 
   # ---------------------------------------------------------------------

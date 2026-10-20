@@ -211,3 +211,13 @@ test("the JSON error pattern does not fire on a real payload", async () => {
     assert.equal(r.action, "execute", `must not fire on: ${text.slice(0, 40)}`);
   }
 });
+
+test("identified callers cannot run Azure tools without a delegated token", async () => {
+  const { executor, notes } = harness(ok);
+  const r = await executor.execute("azure", {}, {
+    caller: { oid: "oid", upn: "user@example.com", armToken: null },
+  });
+  assert.equal(r.action, "blocked");
+  assert.equal(r.reason, "missing_user_token");
+  assert.equal(notes.length, 0);
+});

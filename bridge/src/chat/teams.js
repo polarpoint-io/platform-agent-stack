@@ -72,13 +72,22 @@ export function createTeamsAdapter({ config, deps }) {
           // restart silently stranded every in-flight Teams request. It is
           // plain JSON, so it rides along with the job and survives whatever
           // the job store survives.
+          const from = context.activity.from || {};
+          const props = from.additionalProperties || from.properties || {};
+          const upnCandidate = [props.userPrincipalName, props.email, props.mail]
+            .map((v) => (v == null ? "" : String(v).trim()))
+            .find((v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v));
           const id = await jobs.enqueue({
             text,
             source: {
               type: "teams",
               ref: TurnContext.getConversationReference(context.activity),
-              user: context.activity.from?.id,
+              user: from.id,
             },
+            // Never use display name as UPN — Freshservice scoping needs an email.
+            caller: from.aadObjectId
+              ? { oid: String(from.aadObjectId), upn: upnCandidate || null, armToken: null }
+              : null,
           });
 
           // Same honest ack as Slack: queued, not done. The Bot Framework's

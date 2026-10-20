@@ -40,8 +40,7 @@ actions:
 
   # tier 2 - low-risk write, executes and notifies
   add_ticket_comment:   create_ticket_note
-
-  # tier 3 - needs human approval before executing
+  # Files immediately. Does not grant access (grant_access is unmapped).
   create_ticket:        create_ticket
 
 # Appended to the tool description itsm-support shows the model, for verbs

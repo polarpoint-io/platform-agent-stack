@@ -2,6 +2,7 @@
   <img src="assets/hero.svg" alt="platform-agent-stack — agent topology, risk policy and pluggable backends in one repo" width="100%">
 </p>
 
+
 # platform-agent-stack
 
 Agent topology, risk policy and the pluggable backends — in one repo,

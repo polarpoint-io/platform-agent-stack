@@ -132,6 +132,7 @@ export const alertPollerEnabled = new Gauge("platform_agent_alert_poller_enabled
 // two replicas both believe they lead, which is the split-brain to alert on.
 export const leaderStatus = new Gauge("platform_agent_leader", "1 on the replica currently holding the named lease", ["lease"]);
 export const authRefusals = new Counter("platform_agent_auth_refusals_total", "Requests refused by the approval-token guard", ["reason"]);
+export const identityRefusals = new Counter("platform_agent_identity_refusals_total", "Triage requests refused for missing caller identity", ["reason"]);
 
 // --- alert poller ---
 export const alertPolls = new Counter("platform_agent_alert_polls_total", "Grafana alert polls by outcome", ["outcome"]);
