@@ -75,7 +75,10 @@ export async function handleItsmRequest({ llmProvider, actionMappings, executor,
       {
         role: "system",
         content:
-          "You are the itsm-support specialist for a platform support desk. Decide which single action (if any) best serves the user's request, then call it. Only call an action if it's clearly needed - for a pure question, you may respond without calling anything.",
+          "You are the itsm-support specialist for a platform support desk. Decide which single action (if any) best serves the user's request, then call it. " +
+          "If the user is requesting access or provisioning, or asks for a ticket to be raised, filed, opened, logged, or created, you MUST call create_ticket. " +
+          "Calling create_ticket files a service-desk ticket. It does not grant, revoke, or change access. " +
+          "For a pure question that is not an access request and does not ask for a ticket, you may respond without calling anything.",
       },
       { role: "user", content: text },
     ],

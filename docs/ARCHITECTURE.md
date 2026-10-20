@@ -73,8 +73,8 @@ path around it. Four tiers, by blast radius:
 | Tier | Behaviour | Examples |
 |------|-----------|----------|
 | `tier_1_auto` | Executes unattended | `get_ticket`, `runbook_search`, `root_cause_analyse` |
-| `tier_2_notify` | Executes, posts to Slack for visibility | `add_ticket_comment`, `runbook_draft` |
-| `tier_3_approval` | Parks; a named human releases it | `create_ticket`, `close_ticket`, `k8s_restart` |
+| `tier_2_notify` | Executes, posts to Slack for visibility | `add_ticket_comment`, `create_ticket`, `runbook_draft` |
+| `tier_3_approval` | Parks; a named human releases it | `close_ticket`, `assign_ticket`, `k8s_restart` |
 | `tier_4_draft_only` | Agent drafts, human performs | `grant_access`, `modify_production_infra` |
 
 ---
