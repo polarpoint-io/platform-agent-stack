@@ -134,8 +134,9 @@ export async function classify(llmProvider, text) {
           'add an MCP for Grafana", "how do I configure X"). This lane has runbook and documentation ' +
           'search; route a technical how-to here even though it is phrased as "how do I".\n' +
           '"itsm_ticket" - a request that belongs in the service desk: raising or updating a ticket, an ' +
-          'access or provisioning request (e.g. "how do I get access to X", "how do I request Y"), or ' +
-          'a question about an existing ticket.\n' +
+          'access or provisioning request (e.g. "how do I get access to X", "how do I request Y"), ' +
+          'a question about an existing ticket, or a question about the service desk\'s own ' +
+          'configuration (required fields, valid groups or agents, why a ticket was rejected).\n' +
           '"unknown" - neither of the above.',
       },
       { role: "user", content: text },

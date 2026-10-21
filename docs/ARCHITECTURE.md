@@ -126,6 +126,17 @@ and for `Validation Error: ...` (HTTP 400 from ticket create). Backends declare
 a `resultIsErrorWhen` pattern, compiled once at boot, and the executor applies
 it. Without this, a broken backend looks like a working one.
 
+**A mapped, correctly-tiered verb can still be permanently rejected by the
+backend's own configuration.** `create_ticket` on cfcunderwriting's Freshservice
+tenant 400s every time with `group_id`/`responder_id ... missing_field`: Group
+and Agent are mandatory on that tenant's ticket form, and `freshservice-mcp`'s
+`create_ticket` has no parameter for either - the model cannot supply what the
+tool cannot accept. `list_ticket_fields` (tier 1, `get_ticket_fields`) exists so
+the required fields and valid choices are visible over chat; fixing `create_ticket`
+itself needs either the tenant's Group/Agent requirement relaxed, or a fork of
+`freshservice-mcp` with a `group_id`/`responder_id` parameter injected the same
+way `jira.cloudId`/`jira.projectKey` are. Neither is done yet.
+
 **Verbs are checked against reality at boot.** `assertVerbsResolve()` says so at
 startup if a tiered verb points at a tool its backend does not have. This came
 from a real case: `runbook_gap_detect` was tiered for months and never existed. A

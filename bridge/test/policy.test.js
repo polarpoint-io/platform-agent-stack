@@ -33,6 +33,23 @@ const TIER_CASES = [
   ["create_ticket", "tier_2_notify", "execute", true],
 ];
 
+test("freshservice: list_ticket_fields resolves read-only, with no mapping required for other providers", () => {
+  const policy = policyFor("freshservice");
+  const decision = policy.decide("list_ticket_fields");
+  assert.equal(decision.tier, "tier_1_auto");
+  assert.equal(decision.action, "execute");
+  assert.equal(decision.notify, false);
+  assert.equal(decision.backend, "itsm");
+  assert.equal(decision.tool, "get_ticket_fields");
+
+  // jira-service-management has no mapping for it yet - unmapped is the
+  // safe default, not a test failure (see risk-tiers.yaml's own
+  // "unlisted verb" convention).
+  const jiraPolicy = policyFor("jira-service-management");
+  const jiraDecision = jiraPolicy.decide("list_ticket_fields");
+  assert.equal(jiraDecision.action, "blocked");
+});
+
 for (const provider of ["jira-service-management", "freshservice"]) {
   test(`${provider}: tiered + mapped verbs resolve to the right action`, () => {
     const policy = policyFor(provider);

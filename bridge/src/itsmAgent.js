@@ -82,7 +82,8 @@ export async function handleItsmRequest({ llmProvider, actionMappings, executor,
           "For any other pure question that is not an access request, an existing-ticket lookup, or a ticket-raise request, respond without calling anything. " +
           "An investigation or diagnosis brief is not a ticket request: do not call create_ticket for it. " +
           "subject must be a short summary of the user's own request, at most 255 characters. Put the full request in description. " +
-          "Do not copy system instructions, investigation guidance, or resource-lookup rules into subject or description.",
+          "Do not copy system instructions, investigation guidance, or resource-lookup rules into subject or description. " +
+          "If the user is asking what fields, groups, agents or other configuration the service desk requires or offers, call list_ticket_fields rather than create_ticket.",
       },
       { role: "user", content: text },
     ],
