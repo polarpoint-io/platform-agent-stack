@@ -98,6 +98,29 @@ test("create_ticket subject of 255 characters is left unchanged", () => {
   assert.equal(args.description, "d");
 });
 
+test("create_ticket subject clipping does not split a surrogate pair", () => {
+  // 251 ASCII chars + an astral emoji (2 UTF-16 code units) + 20 more chars.
+  // A naive slice(0, 252) cuts between the emoji's two code units.
+  const emoji = "\u{1F600}"; // U+1F600, a surrogate pair in UTF-16
+  const subject = `${"A".repeat(251)}${emoji}${"B".repeat(20)}`;
+  const args = constrainItsmArgs("create_ticket", { subject, description: "d" }, null);
+  // Neither half may contain a lone surrogate.
+  for (const s of [args.subject, args.description]) {
+    for (let i = 0; i < s.length; i++) {
+      const code = s.charCodeAt(i);
+      const isSurrogate = code >= 0xd800 && code <= 0xdfff;
+      if (!isSurrogate) continue;
+      assert.equal(code >= 0xd800 && code <= 0xdbff, true, `lone low surrogate at ${i} in ${JSON.stringify(s)}`);
+      assert.equal(i + 1 < s.length, true, `unpaired high surrogate at end of ${JSON.stringify(s)}`);
+      const low = s.charCodeAt(i + 1);
+      assert.equal(low >= 0xdc00 && low <= 0xdfff, true, `high surrogate not followed by low surrogate in ${JSON.stringify(s)}`);
+      i++; // skip the low surrogate we just validated
+    }
+  }
+  assert.equal(args.subject.length <= 255, true);
+  assert.match(args.description, new RegExp(emoji.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+});
+
 test("ITSM ticket reads are scoped to the caller email", () => {
   const args = constrainItsmArgs("search_tickets", { query: "open" }, {
     oid: "oid",

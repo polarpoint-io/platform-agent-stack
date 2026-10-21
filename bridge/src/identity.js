@@ -98,10 +98,21 @@ function emailQueryClause(upn) {
 // Clip here so the model cannot send a system prompt as the subject.
 const FRESHSERVICE_SUBJECT_MAX = 255;
 
+function isHighSurrogate(code) {
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
 function capTicketSubject(args) {
   const subject = typeof args.subject === "string" ? args.subject : "";
   if (subject.length <= FRESHSERVICE_SUBJECT_MAX) return;
-  const head = subject.slice(0, FRESHSERVICE_SUBJECT_MAX - 3).replace(/\s+$/u, "");
+  let cut = FRESHSERVICE_SUBJECT_MAX - 3;
+  // slice(0, cut) keeps code units [0, cut). If the LAST kept unit is a high
+  // surrogate, its low surrogate is the very next unit, which would be
+  // dropped - a lone high surrogate in subject and a lone low surrogate in
+  // description, both invalid UTF-16. Back off one so the pair stays together
+  // in description instead.
+  if (cut > 0 && isHighSurrogate(subject.charCodeAt(cut - 1))) cut -= 1;
+  const head = subject.slice(0, cut).replace(/\s+$/u, "");
   const rest = subject.slice(head.length).trim();
   const description = typeof args.description === "string" ? args.description : "";
   if (rest && !description.includes(rest)) {
