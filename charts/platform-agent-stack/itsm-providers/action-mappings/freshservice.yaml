@@ -38,9 +38,23 @@ actions:
   # search tool, only lookups by folder id / article id. Left unmapped -
   # an unmapped verb cannot execute, which is the safe state.
 
+  # tier 1 - read-only config lookup. Added 2026-10-21: this tenant
+  # rejects create_ticket with "group_id ... missing_field" /
+  # "responder_id ... missing_field", and the tool has no parameter for
+  # either - this is the only way to see what create_ticket actually
+  # requires (and which groups/agents are valid) without portal access.
+  list_ticket_fields:   get_ticket_fields
+
   # tier 2 - low-risk write, executes and notifies
   add_ticket_comment:   create_ticket_note
   # Files immediately. Does not grant access (grant_access is unmapped).
+  # Tenants that mark Group and Agent mandatory will reject every call:
+  # this tool exposes no group_id/responder_id parameter, so Freshservice
+  # returns "Validation Error: [... missing_field ...]". Fix it by relaxing
+  # that form requirement, or by forking the tool to accept group_id and
+  # responder_id and injecting a deployment default the same way
+  # jira.cloudId and jira.projectKey are. Use list_ticket_fields to find a
+  # valid group_id first.
   create_ticket:        create_ticket
 
 # Appended to the tool description itsm-support shows the model, for verbs
