@@ -48,14 +48,13 @@ actions:
   # tier 2 - low-risk write, executes and notifies
   add_ticket_comment:   create_ticket_note
   # Files immediately. Does not grant access (grant_access is unmapped).
-  # BLOCKED on cfcunderwriting's tenant as of 2026-10-21: Group and Agent
-  # are mandatory on this tenant's ticket form, and this tool exposes no
-  # group_id/responder_id parameter to satisfy that. Every call 400s with
-  # "Validation Error: [... missing_field ...]" until either (a) the
-  # tenant's Group/Agent requirement is relaxed, or (b) this tool is
-  # forked to accept group_id/responder_id and a valid default is
-  # injected the same way jira.cloudId/jira.projectKey are. Use
-  # list_ticket_fields to find a valid group_id first.
+  # Tenants that mark Group and Agent mandatory will reject every call:
+  # this tool exposes no group_id/responder_id parameter, so Freshservice
+  # returns "Validation Error: [... missing_field ...]". Fix it by relaxing
+  # that form requirement, or by forking the tool to accept group_id and
+  # responder_id and injecting a deployment default the same way
+  # jira.cloudId and jira.projectKey are. Use list_ticket_fields to find a
+  # valid group_id first.
   create_ticket:        create_ticket
 
 # Appended to the tool description itsm-support shows the model, for verbs

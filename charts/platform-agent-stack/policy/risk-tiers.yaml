@@ -31,14 +31,12 @@ risk_tiers:
       - root_cause_analyse
       - investigation_classify
       # Read-only lookup of the ITSM backend's own ticket field config -
-      # required fields, valid choices (e.g. which groups exist). Added
-      # 2026-10-21 after create_ticket on cfcunderwriting's Freshservice
-      # tenant rejected every attempt with "group_id ... missing_field":
-      # Group and Agent are mandatory on this tenant's ticket form, and
-      # freshservice-mcp's create_ticket has no group_id/responder_id
-      # parameter at all - there was no way to discover, let alone supply,
-      # a valid value. This makes the requirement and the valid options
-      # visible over chat without anyone touching the API key directly.
+      # required fields, valid choices (e.g. which groups exist). Freshservice
+      # tenants can mark Group and Agent mandatory, and freshservice-mcp's
+      # create_ticket has no group_id/responder_id parameter, so a call is
+      # rejected with "missing_field" and there is no way to discover a valid
+      # value. This makes the requirement and the valid options visible over
+      # chat without anyone touching the API key directly.
       - list_ticket_fields
 
   tier_2_notify:
