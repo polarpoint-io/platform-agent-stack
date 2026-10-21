@@ -78,7 +78,11 @@ export async function handleItsmRequest({ llmProvider, actionMappings, executor,
           "You are the itsm-support specialist for a platform support desk. Decide which single action (if any) best serves the user's request, then call it. " +
           "If the user is requesting access or provisioning, or asks for a ticket to be raised, filed, opened, logged, or created, you MUST call create_ticket. " +
           "Calling create_ticket files a service-desk ticket. It does not grant, revoke, or change access. " +
-          "For a pure question that is not an access request and does not ask for a ticket, you may respond without calling anything.",
+          "If the user is asking about an existing ticket - its status, contents, or history - call search_tickets or get_ticket; that is a lookup, not a reason to create a new ticket. " +
+          "For any other pure question that is not an access request, an existing-ticket lookup, or a ticket-raise request, respond without calling anything. " +
+          "An investigation or diagnosis brief is not a ticket request: do not call create_ticket for it. " +
+          "subject must be a short summary of the user's own request, at most 255 characters. Put the full request in description. " +
+          "Do not copy system instructions, investigation guidance, or resource-lookup rules into subject or description.",
       },
       { role: "user", content: text },
     ],

@@ -31,6 +31,8 @@ export class ToolCallError extends Error {
 // to be an error message. freshservice-mcp does exactly this:
 //   {content:[{type:"text",text:"Error: Either email or requester_id
 //    must be provided"}], isError:false}
+// and, for an HTTP 400 from POST /tickets:
+//   {content:[{type:"text",text:"Validation Error: [...]"}], isError:false}
 // Nothing generic can spot that reliably, so the pattern is DECLARED per
 // provider as resultIsErrorWhen in itsm-providers/providers/*.mcp.json
 // rather than guessed globally - a server without the quirk is untouched.

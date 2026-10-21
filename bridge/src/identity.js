@@ -92,8 +92,38 @@ function emailQueryClause(upn) {
   return `email:'${safe}'`;
 }
 
+// Freshservice rejects POST /api/v2/tickets with HTTP 400 when subject is
+// longer than 255 characters. freshservice-mcp returns that as
+// "Validation Error: ...", which used to be logged as a successful execute.
+// Clip here so the model cannot send a system prompt as the subject.
+const FRESHSERVICE_SUBJECT_MAX = 255;
+
+function isHighSurrogate(code) {
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
+function capTicketSubject(args) {
+  const subject = typeof args.subject === "string" ? args.subject : "";
+  if (subject.length <= FRESHSERVICE_SUBJECT_MAX) return;
+  let cut = FRESHSERVICE_SUBJECT_MAX - 3;
+  // slice(0, cut) keeps code units [0, cut). If the LAST kept unit is a high
+  // surrogate, its low surrogate is the very next unit, which would be
+  // dropped - a lone high surrogate in subject and a lone low surrogate in
+  // description, both invalid UTF-16. Back off one so the pair stays together
+  // in description instead.
+  if (cut > 0 && isHighSurrogate(subject.charCodeAt(cut - 1))) cut -= 1;
+  const head = subject.slice(0, cut).replace(/\s+$/u, "");
+  const rest = subject.slice(head.length).trim();
+  const description = typeof args.description === "string" ? args.description : "";
+  if (rest && !description.includes(rest)) {
+    args.description = description ? `${description}\n\n${rest}` : rest;
+  }
+  args.subject = `${head}...`;
+}
+
 export function constrainItsmArgs(verb, args, caller) {
   const out = { ...(args || {}) };
+  if (verb === "create_ticket") capTicketSubject(out);
   if (!isEmailLikeUpn(caller?.upn)) return out;
   if (verb === "filter_tickets" || verb === "search_tickets") {
     const clause = emailQueryClause(caller.upn);
