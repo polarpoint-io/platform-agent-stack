@@ -198,6 +198,30 @@ test("the JSON error shape this server also uses is caught", async () => {
   );
 });
 
+test("a Freshservice Validation Error is a failed create, not an execute", async () => {
+  const pattern = /^(Error\b|Validation Error\b|\{\s*"error":)/;
+  const rejected = {
+    content: [{ type: "text", text: "Validation Error: [{'field': 'subject', 'message': 'Has 400 characters, it can have maximum of 255 characters', 'code': 'invalid_value'}]" }],
+    isError: false,
+  };
+  const { executor } = harnessWithCheck(rejected, pattern);
+  await assert.rejects(
+    () => executor.execute("search_tickets", {}),
+    (e) => e instanceof ToolCallError && /maximum of 255/.test(e.message)
+  );
+});
+
+test("a created ticket is not treated as a Validation Error", async () => {
+  const pattern = /^(Error\b|Validation Error\b|\{\s*"error":)/;
+  const created = {
+    content: [{ type: "text", text: "Ticket created successfully: {'ticket': {'id': 42}}" }],
+    isError: false,
+  };
+  const { executor } = harnessWithCheck(created, pattern);
+  const r = await executor.execute("search_tickets", {});
+  assert.equal(r.action, "execute");
+});
+
 test("the JSON error pattern does not fire on a real payload", async () => {
   const pattern = /^(Error\b|\{\s*"error":)/;
   // A genuine result, and one that merely CONTAINS an error-ish key

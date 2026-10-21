@@ -121,9 +121,10 @@ survive a restart, or the restart becomes a silent denial. `/status` reports
 
 **Some backends report failure as success.** `holmesgpt-runbook-mcp` returns
 `{"error": ...}` with `isError: false` when a Confluence query fails, which reads
-as a healthy tier-1 result. Backends declare a `resultIsErrorWhen` pattern,
-compiled once at boot, and the executor applies it. Without this, a broken
-backend looks like a working one.
+as a healthy tier-1 result. `freshservice-mcp` does the same for `Error: ...`
+and for `Validation Error: ...` (HTTP 400 from ticket create). Backends declare
+a `resultIsErrorWhen` pattern, compiled once at boot, and the executor applies
+it. Without this, a broken backend looks like a working one.
 
 **Verbs are checked against reality at boot.** `assertVerbsResolve()` says so at
 startup if a tiered verb points at a tool its backend does not have. This came

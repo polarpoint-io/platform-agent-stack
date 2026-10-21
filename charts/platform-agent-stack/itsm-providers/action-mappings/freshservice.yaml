@@ -62,7 +62,9 @@ argument_hints:
     requester_id, even though the schema marks both optional - the API
     rejects the request without one. source, priority and status are
     integers: source 2 = Portal, priority 1 = Low through 4 = Urgent,
-    status 2 = Open.
+    status 2 = Open. subject must be at most 255 characters; put the
+    full request in description. A longer subject is rejected with
+    HTTP 400.
 
   # ---------------------------------------------------------------------
   # NOT MAPPED, deliberately - and worse here than in the Jira mapping

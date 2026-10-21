@@ -77,6 +77,27 @@ test("ticket reads without a UPN are blocked for an identified caller", () => {
   assert.equal(blocked.action, "blocked");
 });
 
+test("create_ticket subject longer than 255 characters is clipped into the description", () => {
+  const subject = `${"A".repeat(300)} tail`;
+  const args = constrainItsmArgs("create_ticket", {
+    subject,
+    description: "short",
+    email: "model@example.com",
+  }, null);
+  assert.equal(args.subject.length <= 255, true);
+  assert.match(args.subject, /\.\.\.$/);
+  assert.match(args.description, /tail/);
+  assert.match(args.description, /^short/);
+  assert.equal(args.email, "model@example.com");
+});
+
+test("create_ticket subject of 255 characters is left unchanged", () => {
+  const subject = "B".repeat(255);
+  const args = constrainItsmArgs("create_ticket", { subject, description: "d" }, null);
+  assert.equal(args.subject, subject);
+  assert.equal(args.description, "d");
+});
+
 test("ITSM ticket reads are scoped to the caller email", () => {
   const args = constrainItsmArgs("search_tickets", { query: "open" }, {
     oid: "oid",

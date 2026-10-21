@@ -123,6 +123,10 @@ export async function classify(llmProvider, text) {
           'filed, opened, logged or created, classify it "itsm_ticket" EVEN IF the subject is ' +
           'infrastructure. Only that lane can create tickets; the infrastructure lane is read-only, so ' +
           'routing such a request there means nothing happens at all.\n\n' +
+          'An investigation or diagnosis brief is "infra_incident" unless it also explicitly asks for a ticket. ' +
+          'That includes a message that instructs you to investigate Azure or other infrastructure, resolve ' +
+          'resource names the user does not know, or answer a support question by looking infrastructure up. ' +
+          'Do not send that brief to itsm_ticket: the service desk would file the instructions as a ticket.\n\n' +
           '"infra_incident" - someone wants something INVESTIGATED, explained or looked up: an alert, ' +
           'an outage, an error, a degraded service, "why is X failing", "what is wrong with Y", or a ' +
           'technical/platform "how do I" or "how to" question about infrastructure, Kubernetes, an MCP ' +

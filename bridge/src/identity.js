@@ -92,8 +92,27 @@ function emailQueryClause(upn) {
   return `email:'${safe}'`;
 }
 
+// Freshservice rejects POST /api/v2/tickets with HTTP 400 when subject is
+// longer than 255 characters. freshservice-mcp returns that as
+// "Validation Error: ...", which used to be logged as a successful execute.
+// Clip here so the model cannot send a system prompt as the subject.
+const FRESHSERVICE_SUBJECT_MAX = 255;
+
+function capTicketSubject(args) {
+  const subject = typeof args.subject === "string" ? args.subject : "";
+  if (subject.length <= FRESHSERVICE_SUBJECT_MAX) return;
+  const head = subject.slice(0, FRESHSERVICE_SUBJECT_MAX - 3).replace(/\s+$/u, "");
+  const rest = subject.slice(head.length).trim();
+  const description = typeof args.description === "string" ? args.description : "";
+  if (rest && !description.includes(rest)) {
+    args.description = description ? `${description}\n\n${rest}` : rest;
+  }
+  args.subject = `${head}...`;
+}
+
 export function constrainItsmArgs(verb, args, caller) {
   const out = { ...(args || {}) };
+  if (verb === "create_ticket") capTicketSubject(out);
   if (!isEmailLikeUpn(caller?.upn)) return out;
   if (verb === "filter_tickets" || verb === "search_tickets") {
     const clause = emailQueryClause(caller.upn);
