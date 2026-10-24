@@ -12,7 +12,7 @@ provider: freshservice
 
 # Tool names below are from github.com/effytech/freshservice_mcp (MIT,
 # self-hosted via uvx). The chart currently runs the interim package
-# freshservice-mcp-ids 1.1.0, which accepts group_id and responder_id on
+# freshservice-mcp-ids 1.1.1, which accepts group_id and responder_id on
 # create_ticket, until those parameters are in upstream freshservice-mcp.
 # The console script name is still freshservice-mcp. Names were originally
 # read from src/freshservice_mcp/server.py @mcp.tool() definitions.
