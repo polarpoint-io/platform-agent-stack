@@ -121,6 +121,33 @@ test("create_ticket subject clipping does not split a surrogate pair", () => {
   assert.match(args.description, new RegExp(emoji.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
+test("create_ticket route ids override the model and do not leak onto other verbs", () => {
+  const previous = {
+    group: process.env.FRESHSERVICE_GROUP_ID,
+    responder: process.env.FRESHSERVICE_RESPONDER_ID,
+  };
+  process.env.FRESHSERVICE_GROUP_ID = "50000124562";
+  process.env.FRESHSERVICE_RESPONDER_ID = "50005637030";
+  try {
+    const created = constrainItsmArgs("create_ticket", {
+      subject: "access",
+      description: "d",
+      group_id: 1,
+      responder_id: 2,
+    }, null);
+    assert.equal(created.group_id, 50000124562);
+    assert.equal(created.responder_id, 50005637030);
+    const searched = constrainItsmArgs("search_tickets", { query: "open", group_id: 1 }, null);
+    assert.equal(searched.group_id, 1);
+    assert.equal(searched.responder_id, undefined);
+  } finally {
+    if (previous.group == null) delete process.env.FRESHSERVICE_GROUP_ID;
+    else process.env.FRESHSERVICE_GROUP_ID = previous.group;
+    if (previous.responder == null) delete process.env.FRESHSERVICE_RESPONDER_ID;
+    else process.env.FRESHSERVICE_RESPONDER_ID = previous.responder;
+  }
+});
+
 test("ITSM ticket reads are scoped to the caller email", () => {
   const args = constrainItsmArgs("search_tickets", { query: "open" }, {
     oid: "oid",

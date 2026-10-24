@@ -67,7 +67,9 @@ argument_hints:
     integers: source 2 = Portal, priority 1 = Low through 4 = Urgent,
     status 2 = Open. subject must be at most 255 characters; put the
     full request in description. A longer subject is rejected with
-    HTTP 400.
+    HTTP 400. When the deployment sets FRESHSERVICE_GROUP_ID and
+    FRESHSERVICE_RESPONDER_ID, the bridge overwrites group_id and
+    responder_id on this verb only. Do not invent those ids.
 
   # ---------------------------------------------------------------------
   # NOT MAPPED, deliberately - and worse here than in the Jira mapping

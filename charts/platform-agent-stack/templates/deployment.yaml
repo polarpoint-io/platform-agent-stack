@@ -74,6 +74,15 @@ spec:
             # ESO via envFrom.
             - name: FRESHSERVICE_DOMAIN
               value: "{{ .Values.freshservice.domain }}"
+            {{- if .Values.freshservice.groupId }}
+            # create_ticket only. identity.js ignores these on every other verb.
+            - name: FRESHSERVICE_GROUP_ID
+              value: {{ .Values.freshservice.groupId | quote }}
+            {{- end }}
+            {{- if .Values.freshservice.responderId }}
+            - name: FRESHSERVICE_RESPONDER_ID
+              value: {{ .Values.freshservice.responderId | quote }}
+            {{- end }}
             {{- end }}
             {{- if eq .Values.itsmProvider "jira-service-management" }}
             # Substituted into itsm-providers/providers/jira-service-management.mcp.json

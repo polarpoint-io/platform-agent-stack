@@ -121,9 +121,31 @@ function capTicketSubject(args) {
   args.subject = `${head}...`;
 }
 
+// A deployment fact, like Jira's cloudId: the model must not choose which
+// queue a ticket lands in. Applied only to create_ticket. Other Freshservice
+// tools do not accept these arguments, so copying them onto every call would
+// make lookups fail. Unset or non-positive values are left alone.
+function freshserviceTicketRoute() {
+  function positiveId(raw) {
+    if (raw == null || String(raw).trim() === "") return null;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n <= 0) return null;
+    return n;
+  }
+  return {
+    group_id: positiveId(process.env.FRESHSERVICE_GROUP_ID),
+    responder_id: positiveId(process.env.FRESHSERVICE_RESPONDER_ID),
+  };
+}
+
 export function constrainItsmArgs(verb, args, caller) {
   const out = { ...(args || {}) };
-  if (verb === "create_ticket") capTicketSubject(out);
+  if (verb === "create_ticket") {
+    capTicketSubject(out);
+    const route = freshserviceTicketRoute();
+    if (route.group_id) out.group_id = route.group_id;
+    if (route.responder_id) out.responder_id = route.responder_id;
+  }
   if (!isEmailLikeUpn(caller?.upn)) return out;
   if (verb === "filter_tickets" || verb === "search_tickets") {
     const clause = emailQueryClause(caller.upn);
