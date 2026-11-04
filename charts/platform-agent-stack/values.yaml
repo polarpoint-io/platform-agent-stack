@@ -10,7 +10,7 @@ llmProvider: anthropic
 image:
   # Built and pushed by .github/workflows/build-bridge-image.yml from bridge/.
   repository: ghcr.io/polarpoint-io/platform-agent-bridge
-  tag: "0.12.5"
+  tag: "0.12.6"
   pullPolicy: IfNotPresent
 
 # Jira Service Management, used only when itsmProvider is
@@ -57,6 +57,9 @@ freshservice:
   # group or assignee. Leave empty for a tenant that does not require them.
   groupId: ""
   responderId: ""
+  # Optional. Prepended to create_ticket description only. Freshservice renders
+  # description as HTML. Empty leaves the description unchanged.
+  ticketHeader: ""
 
 # Per-tool-call timeout for MCP requests. The SDK default of 60s is too
 # short for tools that call an LLM and then a git forge.

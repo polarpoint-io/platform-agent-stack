@@ -138,10 +138,30 @@ function freshserviceTicketRoute() {
   };
 }
 
+// Optional banner from the chart (freshservice.ticketHeader). Empty means
+// leave the model's description alone. Applied only to create_ticket, after
+// subject overflow has been moved into the description, so the banner stays
+// at the top. A second pass that already contains the banner does not add it
+// again.
+function freshserviceTicketHeader() {
+  const raw = process.env.FRESHSERVICE_TICKET_HEADER;
+  if (raw == null) return "";
+  return String(raw).trim();
+}
+
+function applyTicketHeader(args) {
+  const header = freshserviceTicketHeader();
+  if (!header) return;
+  const description = typeof args.description === "string" ? args.description : "";
+  if (description.includes(header)) return;
+  args.description = description ? `${header}\n${description}` : header;
+}
+
 export function constrainItsmArgs(verb, args, caller) {
   const out = { ...(args || {}) };
   if (verb === "create_ticket") {
     capTicketSubject(out);
+    applyTicketHeader(out);
     const route = freshserviceTicketRoute();
     if (route.group_id) out.group_id = route.group_id;
     if (route.responder_id) out.responder_id = route.responder_id;

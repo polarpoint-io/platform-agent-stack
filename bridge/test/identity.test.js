@@ -121,6 +121,45 @@ test("create_ticket subject clipping does not split a surrogate pair", () => {
   assert.match(args.description, new RegExp(emoji.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
+test("create_ticket prepends the configured header once and does not touch other verbs", () => {
+  const previous = process.env.FRESHSERVICE_TICKET_HEADER;
+  process.env.FRESHSERVICE_TICKET_HEADER = "<p><strong>Created by Holmes</strong></p>";
+  try {
+    const created = constrainItsmArgs("create_ticket", {
+      subject: "access",
+      description: "Please grant HiBob.",
+    }, null);
+    assert.equal(
+      created.description,
+      "<p><strong>Created by Holmes</strong></p>\nPlease grant HiBob.",
+    );
+    const again = constrainItsmArgs("create_ticket", {
+      subject: "access",
+      description: created.description,
+    }, null);
+    assert.equal(again.description, created.description);
+    const searched = constrainItsmArgs("search_tickets", { query: "open", description: "leave me" }, null);
+    assert.equal(searched.description, "leave me");
+  } finally {
+    if (previous == null) delete process.env.FRESHSERVICE_TICKET_HEADER;
+    else process.env.FRESHSERVICE_TICKET_HEADER = previous;
+  }
+});
+
+test("create_ticket leaves the description unchanged when no header is configured", () => {
+  const previous = process.env.FRESHSERVICE_TICKET_HEADER;
+  delete process.env.FRESHSERVICE_TICKET_HEADER;
+  try {
+    const created = constrainItsmArgs("create_ticket", {
+      subject: "access",
+      description: "Please grant HiBob.",
+    }, null);
+    assert.equal(created.description, "Please grant HiBob.");
+  } finally {
+    if (previous != null) process.env.FRESHSERVICE_TICKET_HEADER = previous;
+  }
+});
+
 test("create_ticket route ids override the model and do not leak onto other verbs", () => {
   const previous = {
     group: process.env.FRESHSERVICE_GROUP_ID,

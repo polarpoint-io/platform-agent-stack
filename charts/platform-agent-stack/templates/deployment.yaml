@@ -83,6 +83,11 @@ spec:
             - name: FRESHSERVICE_RESPONDER_ID
               value: {{ .Values.freshservice.responderId | quote }}
             {{- end }}
+            {{- if .Values.freshservice.ticketHeader }}
+            # create_ticket description only. identity.js ignores this on every other verb.
+            - name: FRESHSERVICE_TICKET_HEADER
+              value: {{ .Values.freshservice.ticketHeader | quote }}
+            {{- end }}
             {{- end }}
             {{- if eq .Values.itsmProvider "jira-service-management" }}
             # Substituted into itsm-providers/providers/jira-service-management.mcp.json
